@@ -10,7 +10,7 @@
 #property indicator_chart_window
 #include <Broker.mqh>
 #include <Assert.mqh>
-#include "NTI_RunTests.mq4"
+#include "NTI_RunTests.mqh"
 
 string Title="New Trade Indicator"; 
 string Prefix="NTI_";
@@ -44,6 +44,7 @@ int OnInit()
    }
    broker = new Broker();
    SetupGlobalVariables();
+   EventSetTimer(1);
       
 //---
    return(INIT_SUCCEEDED);
@@ -91,11 +92,13 @@ void OnTimer()
                AddTrade(selectTrade);
             else // if it wasn't a new trade, then remove it from the copy
             {
-               for (int j=0; j< ArraySize(existingOrderId); j++)
+               int startingSize = ArraySize(existingOrderId);
+               for (int j=0; j< startingSize; j++)
                {
                   if (existingOrderId[j].TicketId == trade.TicketId)
                   {
-                     existingOrderId[j] == NULL;
+                     existingOrderId[j] = NULL;
+                     ArrayResize(existingOrderId, startingSize - 1, TRADESRESERVESIZE);
                      break;
                   }
                }
@@ -129,15 +132,11 @@ void Initialize()
 {
    if (ArraySize(trades) > 0)
    {
-      for(int ix=0;ix<ArraySize(trades);i++)
+      for(int ix=0;ix<ArraySize(trades);ix++)
         {
          if(trades[ix] != NULL)
            {
             Position * oldTrade = trades[ix];
-            if(CheckPointer(oldTrade) == POINTER_DYNAMIC)
-              {
-               delete (oldTrade);
-              }
             trades[ix] = NULL;
            }
         }

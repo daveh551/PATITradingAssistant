@@ -12,7 +12,7 @@
 #include <stderror.mqh> 
 #include <OrderReliable_2011.01.07.mqh>
 #include <Assert.mqh>
-#include "PTA_Runtests.mq4"
+#include "PTA_Runtests.mqh"
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
@@ -29,7 +29,7 @@ bool HeartBeat = true;
 
 extern bool Testing = true;
 extern int DefaultStopPips = 12;
-extern string ExceptionPairs = "EURUSD/8;AUDUSD/10;GBPUSD/10;EURJPY/10";
+extern string ExceptionPairs = "EURUSD/8;AUDUSD,GPBUSD,EURJPY,USDJPY/10";
 extern bool UseNextLevelTPRule = true;
 extern bool ShowNoEntryZone = true;
 extern color NoEntryColor = Crimson;

@@ -483,6 +483,7 @@ int OrderSendReliable(string symbol, int cmd, double volume, double price,
 		OrderReliablePrint("last error: " + OrderReliableErrTxt(err)+ " (price = "+ price + ", Ask = "+ Ask +", and Bid = "+ Bid +")"); 
 		return(-1); 
 	}
+	return (-1);
 }
 	
 	
@@ -544,6 +545,7 @@ bool OrderModifyReliable(int ticket, double price, double stoploss,
 		return(false);  
 	}
 
+   string symbol = OrderSymbol();
 
 	
 	if (false) {
@@ -557,7 +559,6 @@ bool OrderModifyReliable(int ticket, double price, double stoploss,
 		 // manually.
 		 
 		 OrderSelect(ticket,SELECT_BY_TICKET,MODE_TRADES);
-		 string symbol = OrderSymbol();
 		 int digits = MarketInfo(symbol,MODE_DIGITS);
 		 if (digits > 0) {
 			 price = NormalizeDouble(price,digits);
@@ -1168,6 +1169,7 @@ int OrderReSendReliable(string symbol, int cmd, double volume, double price,
 					continue;	// we can apparently retry immediately according to MT docs.
 					
 				case ERR_INVALID_STOPS:
+				{
 					double servers_min_stop = MarketInfo(symbol, MODE_STOPLEVEL) * MarketInfo(symbol, MODE_POINT); 
 					if (cmd == OP_BUYSTOP) 
 					{
@@ -1184,7 +1186,7 @@ int OrderReSendReliable(string symbol, int cmd, double volume, double price,
 					}
 					exit_loop = true; 
 					break; 
-					
+				}	
 				default:
 					// an apparently serious error.
 					exit_loop = true;
@@ -1364,6 +1366,7 @@ int OrderReSendReliable(string symbol, int cmd, double volume, double price,
 		OrderReliablePrint("last error: " + OrderReliableErrTxt(err)+ " (price = "+ price + ", Ask = "+ Ask +", and Bid = "+ Bid +")"); 
 		return(-1); 
 	}
+	return (-1);
 }
 	
 
