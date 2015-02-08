@@ -26,11 +26,14 @@ bool debug = true;
 bool HeartBeat = true;
 
 extern bool Testing = true;
+extern int PairOffsetWithinSymbol = 0;
 
 Broker *broker;
 int numbOpenOrders;
 Position* trades[];
 const int TRADESRESERVESIZE = 20;
+string GVLastCheck;
+string GVNumbOpenOrders;
 //+------------------------------------------------------------------+
 //| Custom indicator initialization function                         |
 //+------------------------------------------------------------------+
@@ -42,7 +45,7 @@ int OnInit()
       RunTests();
       return (INIT_FAILED);
    }
-   broker = new Broker();
+   broker = new Broker(PairOffsetWithinSymbol);
    SetupGlobalVariables();
    EventSetTimer(1);
       
@@ -77,6 +80,8 @@ void OnTimer()
   {
 //---
       int openOrdersThisTime = broker.GetNumberOfOrders();
+      GlobalVariableSet(GVNumbOpenOrders, (double) openOrdersThisTime);
+      GlobalVariableSet(GVLastCheck, (double) (int) TimeLocal());
       if (openOrdersThisTime != numbOpenOrders)
       {
          Position * existingOrderId[];
@@ -92,16 +97,17 @@ void OnTimer()
                AddTrade(selectTrade);
             else // if it wasn't a new trade, then remove it from the copy
             {
+               
                int startingSize = ArraySize(existingOrderId);
                for (int j=0; j< startingSize; j++)
                {
-                  if (existingOrderId[j].TicketId == trade.TicketId)
+                  if (existingOrderId[j] != NULL &&  existingOrderId[j].TicketId == trade.TicketId)
                   {
                      existingOrderId[j] = NULL;
-                     ArrayResize(existingOrderId, startingSize - 1, TRADESRESERVESIZE);
                      break;
                   }
                }
+               delete trade; // We aren't adding it to an array, so delete it to avoid memory leaks
             }
           }
           for (int j=0; j < ArraySize(existingOrderId); j++)
@@ -128,6 +134,7 @@ void OnTimer()
   }
 //+------------------------------------------------------------------+
 
+
 void Initialize()
 {
    if (ArraySize(trades) > 0)
@@ -137,6 +144,7 @@ void Initialize()
          if(trades[ix] != NULL)
            {
             Position * oldTrade = trades[ix];
+            delete oldTrade;
             trades[ix] = NULL;
            }
         }
@@ -144,12 +152,33 @@ void Initialize()
    }
    numbOpenOrders = 0;
 }
+void OnDeinit(const int reason)
+{
+   if (CheckPointer(broker) == POINTER_DYNAMIC)
+      delete broker;
+}
 void SetupGlobalVariables()
 {
-   string GVNumbOpenOrders = Prefix + "NumberOfOpenOrders";
+   GVNumbOpenOrders = Prefix + "NumberOfOpenOrders";
 
    int numbOrders = broker.GetNumberOfOrders();
    GlobalVariableSet(GVNumbOpenOrders, (double) numbOrders);
+   GVLastCheck = Prefix + "LastUpdateTime";
+   
+   GlobalVariableSet(GVLastCheck, (double) (int) TimeLocal());
+   ZeroGlobalVariables();
+}
+
+void ZeroGlobalVariables()
+{
+   for(int ix=0;ix<GlobalVariablesTotal();ix++)
+     {
+         string gvName = GlobalVariableName(ix);
+         if (StringSubstr(gvName, 0, StringLen(Prefix)) == Prefix && StringFind(gvName, "LastOrderId") != -1)
+         {
+            GlobalVariableSet(gvName, 0);
+         }
+     }
 }
 
 Position * FindOpenTrade(int ticketID)

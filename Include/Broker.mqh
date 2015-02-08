@@ -15,9 +15,9 @@
 class Broker
   {
 private:
-
+   int startingPos;
 public:
-                     Broker();
+                     Broker(int symbolOffset = 0);
                     ~Broker();
                     string TypeName;
                     virtual int GetNumberOfOrders()
@@ -39,18 +39,24 @@ public:
                         Position * newTrade = new Position();
                         newTrade.TicketId = OrderTicket();
                         newTrade.OrderType = OrderType();
-                        newTrade.Symbol = OrderSymbol();
+                        newTrade.Symbol = NormalizeSymbol(OrderSymbol());
                         newTrade.OrderOpened = OrderOpenTime();
                         newTrade.OpenPrice = OrderOpenPrice();
                         return newTrade;
                     }
-  };
+ string NormalizeSymbol(string symbol)
+{
+   return (StringSubstr(symbol, startingPos, 6));
+}
+
+};
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-Broker::Broker()
+Broker::Broker(int symbolOffset = 0)
   {
    TypeName = "RealBroker";
+   startingPos = symbolOffset;
   }
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -59,3 +65,6 @@ Broker::~Broker()
   {
   }
 //+------------------------------------------------------------------+
+
+
+

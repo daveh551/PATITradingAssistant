@@ -49,8 +49,16 @@ public:
                     {
                         cntGetPosition++;
                         Position * selectedTrade = OrdersToReturn[selectedPosition];
-                       
-                        return selectedTrade;
+                        Position * newTrade = new Position();
+                        newTrade.Symbol = selectedTrade.Symbol;
+                        newTrade.TicketId = selectedTrade.TicketId;
+                        newTrade.OrderEntered = selectedTrade.OrderEntered;
+                        newTrade.OrderOpened = selectedTrade.OrderOpened;
+                        newTrade.OrderClosed = selectedTrade.OrderClosed;
+                        newTrade.OpenPrice = selectedTrade.OpenPrice;
+                        newTrade.ClosePrice = selectedTrade.ClosePrice;
+                        newTrade.OrderType = selectedTrade.OrderType;
+                        return newTrade;
                     }
   };
 //+------------------------------------------------------------------+
