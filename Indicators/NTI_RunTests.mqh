@@ -62,6 +62,15 @@ void RunTests()
    if (CanDetectClosedOrders())
       testsPassed++;
    totalTests++;
+   if (CanPlaceTwoOrders())
+      testsPassed++;
+   totalTests++;
+   if (CanPlaceTwoOrdersAndCloseOne())
+      testsPassed++;
+   totalTests++;
+   if (CanPlaceAndDeleteOrders())
+      testsPassed++;
+   totalTests++;
    
    Print("Completed tests. ", testsPassed, " of ", totalTests, " passed.");
    if (CheckPointer(broker) == POINTER_DYNAMIC)
@@ -185,4 +194,74 @@ bool CanDetectClosedOrders()
    
 }
 
+bool CanPlaceTwoOrders()
+{
+   FakeBroker *testBroker = broker;
+   Initialize();
+   testBroker.TotalOrdersToReturn = 1;
+   OnTimer();
+   testBroker.TotalOrdersToReturn = 2;
+   OnTimer();
+   double numbOpenOrders;
+   GlobalVariableGet(GVNumbOpenOrders, numbOpenOrders);
+   return Assert(numbOpenOrders == 2, "Number of Open Orders not equal 2");
+}
 
+bool CanPlaceTwoOrdersAndCloseOne()
+{
+   FakeBroker *testBroker = broker;
+   Initialize();
+   testBroker.TotalOrdersToReturn = 1;
+   OnTimer();
+   testBroker.TotalOrdersToReturn = 2;
+   OnTimer();
+   double numbOpenOrders;
+   GlobalVariableGet(GVNumbOpenOrders, numbOpenOrders);
+   testBroker.OrderIndex[0] = 1;
+   testBroker.TotalOrdersToReturn = 1;
+   OnTimer();
+  
+   GlobalVariableGet(GVNumbOpenOrders, numbOpenOrders);
+   return Assert(numbOpenOrders == 1, "Number of Open Orders not equal 1");
+}
+
+bool CanPlaceAndDeleteOrders()
+{
+   //Sequence that causes the problem seems to be:
+   // 1. Place 2 orders
+   // 2. Close 1 of them
+   // 3. Place 2 more orders
+   // 4. Close 2 orders
+   FakeBroker *testBroker = broker;
+   Initialize();
+   ReInitializeOrderIndex(testBroker);
+   testBroker.TotalOrdersToReturn =1;
+   OnTimer();
+   testBroker.TotalOrdersToReturn=2;
+   OnTimer();
+   testBroker.OrderIndex[0] = 1;
+   testBroker.TotalOrdersToReturn = 1;
+   OnTimer();   //Close first order;
+   testBroker.OrderIndex[1]=2;
+   testBroker.OrderIndex[2]=3;
+   testBroker.TotalOrdersToReturn = 2;
+   OnTimer(); //Open another order;
+   testBroker.TotalOrdersToReturn = 3;
+   OnTimer();  //Now we've got 3 open;
+   testBroker.OrderIndex[1] = 3;
+   testBroker.TotalOrdersToReturn = 2;
+   OnTimer();
+   testBroker.TotalOrdersToReturn = 1;
+   OnTimer();
+   double numbOpenOrders;
+   GlobalVariableGet(GVNumbOpenOrders, numbOpenOrders);
+   return Assert(numbOpenOrders == 1, "Number of Open Orders not equal 1");
+}
+
+void ReInitializeOrderIndex(FakeBroker *fake)
+{
+   for(int i=0;i<ArraySize(fake.OrderIndex);i++)
+     {
+      fake.OrderIndex[i] = i;
+     }
+}

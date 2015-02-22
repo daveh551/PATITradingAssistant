@@ -107,7 +107,7 @@ void OnTimer()
                      break;
                   }
                }
-               delete trade; // We aren't adding it to an array, so delete it to avoid memory leaks
+               delete selectTrade; // We aren't adding it to an array, so delete it to avoid memory leaks
             }
           }
           for (int j=0; j < ArraySize(existingOrderId); j++)
@@ -221,8 +221,8 @@ void RemoveClosedTrade(Position *trade)
                trades[j] = trades[j+1];
             }
          }
+         break;
       }
-      break;
    }
    ArrayResize(trades, existingArraySize-1, TRADESRESERVESIZE);
 }

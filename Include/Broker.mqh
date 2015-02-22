@@ -42,7 +42,19 @@ public:
                         newTrade.Symbol = NormalizeSymbol(OrderSymbol());
                         newTrade.OrderOpened = OrderOpenTime();
                         newTrade.OpenPrice = OrderOpenPrice();
+                        newTrade.ClosePrice = OrderClosePrice();
                         return newTrade;
+                    }
+                    virtual int GetType(int ticketId)
+                    {
+                     OrderSelect(ticketId, SELECT_BY_TICKET);
+                     return OrderType();
+                    }
+                    virtual void GetClose(Position * trade)
+                    {
+                     OrderSelect(trade.TicketId, SELECT_BY_TICKET);
+                     trade.ClosePrice = OrderClosePrice();
+                     trade.OrderClosed = OrderCloseTime();
                     }
  string NormalizeSymbol(string symbol)
 {

@@ -24,6 +24,8 @@ public:
                     datetime OrderClosed;
                     double OpenPrice;
                     double ClosePrice;
+                    double StopPrice;
+                    double TakeProfitPrice;
                     int OrderType;                    
   };
 //+------------------------------------------------------------------+

@@ -22,6 +22,7 @@ public:
                     ~FakeBroker();
                     int TotalOrdersToReturn;
                     Position *OrdersToReturn[];
+                    int OrderIndex[];
                     virtual int GetNumberOfOrders()
                     {
                         cntGetNumberOfOrders++;
@@ -48,7 +49,7 @@ public:
                     virtual Position *GetPosition()
                     {
                         cntGetPosition++;
-                        Position * selectedTrade = OrdersToReturn[selectedPosition];
+                        Position * selectedTrade = OrdersToReturn[OrderIndex[selectedPosition]];
                         Position * newTrade = new Position();
                         newTrade.Symbol = selectedTrade.Symbol;
                         newTrade.TicketId = selectedTrade.TicketId;
@@ -67,18 +68,43 @@ public:
 FakeBroker::FakeBroker()
   {
    TypeName = "FakeBroker";
-   ArrayResize(OrdersToReturn,1,5);
+   ArrayResize(OrdersToReturn,4,5);
       Position* order = new Position();
    order.TicketId = 12345;
    order.Symbol = "EURUSD";
 
    OrdersToReturn[0] = order;
+   order = new Position();
+   order.TicketId = 23456;
+   order.Symbol = "GBPUSD";
+   OrdersToReturn[1] = order;
+
+   order = new Position();
+   order.TicketId = 34567;
+   order.Symbol = "GBPJPY";
+   OrdersToReturn[2] = order;
+
+   order = new Position();
+   order.TicketId = 45678;
+   order.Symbol = "GBPAUD";
+   OrdersToReturn[3] = order;
+   
+   ArrayResize(OrderIndex, 4, 5);
+   for(int i=0;i<ArraySize(OrderIndex);i++)
+     {
+      OrderIndex[i] = i;
+     }
   }
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
 FakeBroker::~FakeBroker()
   {
+   for(int ix=0;ix<ArraySize(OrdersToReturn);ix++)
+     {
+      if (CheckPointer(OrdersToReturn[ix]) == POINTER_DYNAMIC)
+         delete OrdersToReturn[ix];
+     }
   }
 //+------------------------------------------------------------------+
 
