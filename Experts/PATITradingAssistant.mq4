@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.20"
+#property version   "0.21"
 #property strict
 
 #include <stdlib.mqh>
@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.20";
+string Version="v0.21";
 string NTIPrefix = "NTI_";
 int DFVersion = 1;
 
@@ -269,18 +269,19 @@ void Initialize()
     lastUpdateTime = (datetime) (int) updateVar;
   }
   broker = new Broker(_pairOffsetWithinSymbol);
+  configFileName = Prefix + Symbol() + "_Configuration.txt";
   
+     if (!SaveConfiguration)
+      ApplyConfiguration();
+   else
+      SaveConfigurationFile();
+
   normalizedSymbol = broker.NormalizeSymbol(Symbol());
   saveFileName = Prefix + normalizedSymbol + "_SaveFile.txt";
   configFileName = Prefix + normalizedSymbol + "_Configuration.txt";
   stopLoss = CalculateStop(normalizedSymbol) * AdjPoint;
   noEntryPad = _minNoEntryPad * AdjPoint;
   globalLastTradeName = NTIPrefix + normalizedSymbol + "LastOrderId";
-     if (!SaveConfiguration)
-      ApplyConfiguration();
-   else
-      SaveConfigurationFile();
-
   Print("globalLastTradeNaem = " + globalLastTradeName);
   MqlDateTime dtStruct;
   TimeToStruct(TimeCurrent(), dtStruct);
@@ -369,6 +370,10 @@ void ApplyConfiguration()
                 {
                   _testing = (bool) StringToInteger(value);
                 }
+         else if(var == "PairOffsetWithinSymbo")
+                {
+                  _pairOffsetWithinSymbol =  StringToInteger(value);
+                }
          else if(var == "DefaultStopPips")
                 {
                   _defaultStopPips =  StringToInteger(value);
@@ -439,7 +444,7 @@ void SaveConfigurationFile()
    int fileHandle = FileOpen(configFileName, FILE_ANSI | FILE_TXT | FILE_WRITE);
    FileWriteString(fileHandle, "Testing: " + IntegerToString((int) _testing) + "\r\n");
 
-//extern int PairOffsetWithinSymbol = 0;
+   FileWriteString(fileHandle, "PairOffsetWithinSymbol: " + IntegerToString(_pairOffsetWithinSymbol) + "\r\n");
    FileWriteString(fileHandle, "DefaultStopPips: " + IntegerToString(_defaultStopPips) + "\r\n");
    FileWriteString(fileHandle, "ExceptionPairs: " + _exceptionPairs +"\r\n");
    FileWriteString(fileHandle, "UseNextLevelTPRule: " + IntegerToString((int) _useNextLevelTPRule ) + "\r\n");
@@ -691,6 +696,11 @@ double GetNextLevel(double currentLevel, int direction /* 1 = UP, -1 = down */)
 
 void CleanupEndOfDay()
 {
+   if (FileIsExist(saveFileName))
+      FileDelete(saveFileName);
+   DeleteAllObjects();
+   // Replace the version legend
+   DrawVersion();
 }
 
 void SaveTradeToFile()
