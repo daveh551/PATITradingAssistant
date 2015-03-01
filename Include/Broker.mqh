@@ -43,6 +43,7 @@ public:
                         newTrade.OrderOpened = OrderOpenTime();
                         newTrade.OpenPrice = OrderOpenPrice();
                         newTrade.ClosePrice = OrderClosePrice();
+                        newTrade.OrderClosed = OrderCloseTime();
                         return newTrade;
                     }
                     virtual int GetType(int ticketId)
@@ -55,6 +56,17 @@ public:
                      OrderSelect(trade.TicketId, SELECT_BY_TICKET);
                      trade.ClosePrice = OrderClosePrice();
                      trade.OrderClosed = OrderCloseTime();
+                    }
+                    virtual void SetSLandTP(Position *trade)
+                    {
+                     if (!OrderModifyReliable(trade.TicketId,
+                        trade.OpenPrice,
+                        trade.StopPrice,
+                        trade.TakeProfitPrice,
+                        0 ))
+                        {
+                           Alert("Setting SL and TP for " + trade.Symbol + " failed.");
+                        }
                     }
  string NormalizeSymbol(string symbol)
 {
