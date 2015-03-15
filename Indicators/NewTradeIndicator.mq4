@@ -8,6 +8,8 @@
 #property version   "1.00"
 #property strict
 #property indicator_chart_window
+#include <stdlib.mqh>
+#include <stderror.mqh>
 #include <Broker.mqh>
 #include <Assert.mqh>
 #include "NTI_RunTests.mqh"
@@ -25,7 +27,7 @@ color TextColor=Goldenrod;
 bool debug = true;
 bool HeartBeat = true;
 
-extern bool Testing = true;
+extern bool Testing = false;
 extern int PairOffsetWithinSymbol = 0;
 
 Broker *broker;

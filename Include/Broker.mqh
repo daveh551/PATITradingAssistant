@@ -8,6 +8,7 @@
 #property version   "1.00"
 #property strict
 #include <Position.mqh>
+#include <OrderReliable_2011.01.07.mqh>
 
 //+------------------------------------------------------------------+
 //|                                                                  |

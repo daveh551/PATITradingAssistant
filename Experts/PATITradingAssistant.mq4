@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.21"
+#property version   "0.24"
 #property strict
 
 #include <stdlib.mqh>
@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.21";
+string Version="v0.24";
 string NTIPrefix = "NTI_";
 int DFVersion = 1;
 
@@ -39,18 +39,20 @@ extern int PairOffsetWithinSymbol = 0;
 extern int DefaultStopPips = 12;
 extern string ExceptionPairs = "EURUSD/8;AUDUSD,GBPUSD,EURJPY,USDJPY,USDCAD/10";
 extern bool UseNextLevelTPRule = true;
-extern double MinRewardRatio = 1.5;
 extern bool ShowNoEntryZone = true;
-extern color NoEntryZoneColor = DarkGray;
-extern double MinNoEntryPad = 15;
-extern int EntryIndicator = 2;
+extern bool ShowEntry = true;
 extern bool ShowInitialStop = true;
 extern bool ShowExit = true;
+extern bool ShowTradeTrendLine = true;
+extern bool SendSLandTPToBroker = true;
+extern bool AlertOnTrade=true;
+extern double MinNoEntryPad = 15;
+extern int EntryIndicator = 2;
+extern double MinRewardRatio = 1.5;
+extern color NoEntryZoneColor = DarkGray;
 extern color WinningExitColor = Green;
 extern color LosingExitColor = Red;
-extern bool ShowTradeTrendLine = true;
 extern color TradeTrendLineColor = Blue;
-extern bool SendSLandTPToBroker = false;
 extern bool SaveConfiguration = false;
 
 const double GVUNINIT = -99999999;
@@ -75,6 +77,8 @@ color _losingExitColor;
 bool _showTradeTrendLine;
 color _tradeTrendLineColor;
 bool _sendSLandTPToBroker;
+bool _showEntry;
+bool _alertOnTrade;
 
 bool alertedThisBar = false;
 datetime time0;
@@ -331,6 +335,8 @@ void CopyInitialConfigVariables()
    _tradeTrendLineColor = TradeTrendLineColor;
    _minRewardRatio = MinRewardRatio;
    _sendSLandTPToBroker = SendSLandTPToBroker;
+   _showEntry = ShowEntry;
+   _alertOnTrade = AlertOnTrade;
 
 }
 
@@ -430,6 +436,14 @@ void ApplyConfiguration()
                 {
                   _sendSLandTPToBroker = (bool) StringToInteger(value);
                 }
+         else if(var == "ShowEntry")
+                {
+                  _showEntry = (bool) StringToInteger(value);
+                }
+         else if(var == "AlertOnTrade")
+                {
+                  _alertOnTrade = (bool) StringToInteger(value);
+                }
         }
      }
    FileClose(fileHandle);
@@ -460,6 +474,8 @@ void SaveConfigurationFile()
    FileWriteString(fileHandle, "ShowTradeTrendLine: " + IntegerToString((int) _showTradeTrendLine) + "\r\n");
    FileWriteString(fileHandle, "TradeTrendLineColor: " + (string) _tradeTrendLineColor+ "\r\n");
    FileWriteString(fileHandle, "SendSLandTPToBroker: " + IntegerToString((int) _sendSLandTPToBroker) + "\r\n");
+   FileWriteString(fileHandle, "ShowEntry: " + IntegerToString((int) _showEntry) + "\r\n");
+   FileWriteString(fileHandle, "AlertOnTrade: " + IntegerToString((int) _alertOnTrade) + "\r\n");
 
 
    
@@ -470,6 +486,12 @@ bool CheckForNewTrade()
 {
    if (lastTradePending)
    {
+      if (GetNewTradeId() == 0)
+         {
+            lastTradePending = false;
+            lastTradeId = 0;
+            return false;
+         }
       int orderType = broker.GetType(lastTradeId);
       if (orderType == OP_BUY || orderType == OP_SELL)
         {
@@ -504,7 +526,11 @@ void HandleNewEntry(bool savedTrade = false)
    lastTrade = broker.GetTrade(lastTradeId);
    if (!savedTrade)
    {
-      Alert("New Trade Entered for " + normalizedSymbol + ". Id = " + IntegerToString(lastTradeId) +". OpenPrice = " + DoubleToStr(lastTrade.OpenPrice, 5));
+      if(_alertOnTrade)
+        {
+            Alert("New Trade Entered for " + normalizedSymbol + ". Id = " + IntegerToString(lastTradeId) +". OpenPrice = " + DoubleToStr(lastTrade.OpenPrice, 5));
+         
+        }
       SaveTradeToFile();
    }
 
@@ -523,9 +549,12 @@ void HandleNewEntry(bool savedTrade = false)
          lastTrade.TakeProfitPrice = GetNextLevel(lastTrade.OpenPrice-_minRewardRatio*stopLoss, -1);
       objectName = objectName + "S" + IntegerToString(++shortTradeNumberForDay);
    }
+   if (_showEntry)
+   {
    ObjectCreate(0, objectName, OBJ_ARROW, 0, lastTrade.OrderOpened, lastTrade.OpenPrice);
    ObjectSetInteger(0, objectName, OBJPROP_ARROWCODE, _entryIndicator);
    ObjectSetInteger(0, objectName, OBJPROP_COLOR, Blue);
+   }
    if (DEBUG_ENTRY)
    {
       Print("Setting TakeProfit targe at " + DoubleToStr(lastTrade.TakeProfitPrice, Digits));
@@ -537,7 +566,7 @@ void HandleNewEntry(bool savedTrade = false)
       ObjectSetInteger(0, objectName, OBJPROP_ARROWCODE, 4);
       ObjectSetInteger(0, objectName, OBJPROP_COLOR, Red);
    }
-   if (_sendSLandTPToBroker)
+   if (_sendSLandTPToBroker && !savedTrade)
    {
       broker.SetSLandTP(lastTrade);
    }    
@@ -561,13 +590,21 @@ void HandleClosedTrade(bool savedTrade = false)
    if(CheckPointer(lastTrade) == POINTER_INVALID)
    {
       if (!savedTrade)
-         Alert("Old Trade " + IntegerToString(oldTradeId) + " closed. INVALID POINTER for lastTrade");
+      {
+         if(_alertOnTrade)
+           {
+               Alert("Old Trade " + IntegerToString(oldTradeId) + " closed. INVALID POINTER for lastTrade");      
+           }
+      }
    }
    else
    {
       if (!savedTrade)
       {
-         Alert("Old Trade " + IntegerToString(oldTradeId) + " (", + lastTrade.Symbol +") closed.");
+         if(_alertOnTrade)
+           {
+               Alert("Old Trade " + IntegerToString(oldTradeId) + " (", + lastTrade.Symbol +") closed.");            
+           }
    
          Print("Handling closed trade.  OrderType= " + IntegerToString(lastTrade.OrderType));
          broker.GetClose(lastTrade);
@@ -609,6 +646,7 @@ void HandleClosedTrade(bool savedTrade = false)
                ObjectSetInteger(0, objName, OBJPROP_COLOR, _losingExitColor);
                if (_showNoEntryZone)
                {
+                  datetime rectStart = lastTrade.OrderClosed;
                   double rectHigh = NormalizeDouble(GetNextLevel(lastTrade.OpenPrice + noEntryPad,1), Digits);
                   if (DEBUG_EXIT)
                   {
@@ -622,8 +660,25 @@ void HandleClosedTrade(bool savedTrade = false)
                         DoubleToStr(lastTrade.OpenPrice, Digits), DoubleToStr(noEntryPad, Digits), DoubleToStr(lastTrade.OpenPrice - noEntryPad));
                   }
                   string rectName = Prefix + "NoEntryZone";
-                  if (ObjectFind(rectName) >= 0) ObjectDelete(rectName);  // For right now, just delete it.  We may want to extend it instead
-                  ObjectCreate(0,rectName, OBJ_RECTANGLE, 0, lastTrade.OrderClosed, rectHigh, endOfDay, rectLow);
+                  if (ObjectFind(rectName) >= 0) 
+                  {
+                     double existingHigh = ObjectGetDouble(0, rectName, OBJPROP_PRICE1);
+                     if(existingHigh > rectHigh)
+                       {
+                         rectHigh = existingHigh;
+                       }
+                     double existingLow = ObjectGetDouble(0, rectName, OBJPROP_PRICE2);
+                     if (existingLow < rectLow)
+                     {
+                        rectLow = existingLow;
+                     }
+                     datetime existingStart = ObjectGetInteger(0, rectName, OBJPROP_TIME1);
+                     if (existingStart < rectStart)
+                     {
+                        rectStart = existingStart;
+                     }
+                  }
+                  ObjectCreate(0,rectName, OBJ_RECTANGLE, 0, rectStart, rectHigh, endOfDay, rectLow);
                   ObjectSetInteger(0, rectName, OBJPROP_COLOR, _noEntryZoneColor);
                }
            }
