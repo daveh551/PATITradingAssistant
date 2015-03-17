@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.24"
+#property version   "0.25"
 #property strict
 
 #include <stdlib.mqh>
@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.24";
+string Version="v0.25";
 string NTIPrefix = "NTI_";
 int DFVersion = 1;
 
@@ -663,11 +663,19 @@ void HandleClosedTrade(bool savedTrade = false)
                   if (ObjectFind(rectName) >= 0) 
                   {
                      double existingHigh = ObjectGetDouble(0, rectName, OBJPROP_PRICE1);
+                     if (DEBUG_EXIT)
+                     {
+                        PrintFormat("Existing ExitZone rectangle high = %s", DoubleToString(existingHigh, Digits));
+                     }
                      if(existingHigh > rectHigh)
                        {
                          rectHigh = existingHigh;
                        }
                      double existingLow = ObjectGetDouble(0, rectName, OBJPROP_PRICE2);
+                      if (DEBUG_EXIT)
+                     {
+                        PrintFormat("Existing ExitZone rectangle low = %s", DoubleToString(existingLow, Digits));
+                     }
                      if (existingLow < rectLow)
                      {
                         rectLow = existingLow;
