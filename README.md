@@ -10,22 +10,22 @@ This trading assistant will monitor open trades on your account. It was specific
 
 When it detects a new trade, it will do the following:
 
-1) Set your stop loss the appropriate number of pips (according to the PATI rules).
-2) Add an arrow at your entry point
-3) Set your take profit at the next level.
+1. Set your stop loss the appropriate number of pips (according to the PATI rules).
+2. Add an arrow at your entry point
+3. Set your take profit at the next level.
 
 In addition, on detecting that a trade has been closed, it will
-4) Add a right arrow at the exit, and draw a line between entry and exit arrows
-5) If the trade resulted in a loss, it will add a "no-entry" rectangle, indicating the zone in which you cannot make a new entry.
+4. Add a right arrow at the exit, and draw a line between entry and exit arrows
+5. If the trade resulted in a loss, it will add a "no-entry" rectangle, indicating the zone in which you cannot make a new entry.
 
 All these actions are configurable.
 
 
 # Installation:
 The Trading Assistant has 2 components:
-1) The "New Trade Indicator" (NTI)  which is an indicator (not expert advisor) that needs to be run on one and only one chart in your MT4 platform.
+1. The "New Trade Indicator" (NTI)  which is an indicator (not expert advisor) that needs to be run on one and only one chart in your MT4 platform.
 It works off a one-second interval timer, not off ticks, so which chart it's placed on doesn't matter.  Its function is to monitor for new trades and closed trade across the entire account.
-2) The PATITradingAssistant (PTA) which is an expert advisor that needs to run on each pair that you trade.  
+2. The PATITradingAssistant (PTA) which is an expert advisor that needs to run on each pair that you trade.  
 It will monitor the global variables set by NTI and detect when you have entered a new trade for that pair.  It will then execute the configured actions. 
 Although it is not entering trades, it is modifying them (in order to set stop loss and take profit), so it needs to have AutoTrading enabled.
 
