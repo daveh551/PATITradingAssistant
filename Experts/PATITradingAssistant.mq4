@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.25"
+#property version   "0.26"
 #property strict
 
 #include <stdlib.mqh>
@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.25";
+string Version="v0.26";
 string NTIPrefix = "NTI_";
 int DFVersion = 1;
 
@@ -537,16 +537,16 @@ void HandleNewEntry(bool savedTrade = false)
    string objectName = Prefix + "Entry";
    if (lastTrade.OrderType == OP_BUY)
    {
-      lastTrade.StopPrice = lastTrade.OpenPrice - stopLoss;
+      if (lastTrade.StopPrice == 0) lastTrade.StopPrice = lastTrade.OpenPrice - stopLoss;
       if (_useNextLevelTPRule)
-         lastTrade.TakeProfitPrice = GetNextLevel(lastTrade.OpenPrice + _minRewardRatio*stopLoss, 1);
+         if (lastTrade.TakeProfitPrice == 0) lastTrade.TakeProfitPrice = GetNextLevel(lastTrade.OpenPrice + _minRewardRatio*stopLoss, 1);
       objectName = objectName + "L" + IntegerToString(++longTradeNumberForDay);
    }  
    else
    {
-      lastTrade.StopPrice = lastTrade.OpenPrice + stopLoss;
+      if (lastTrade.StopPrice ==0 )lastTrade.StopPrice = lastTrade.OpenPrice + stopLoss;
       if (_useNextLevelTPRule)
-         lastTrade.TakeProfitPrice = GetNextLevel(lastTrade.OpenPrice-_minRewardRatio*stopLoss, -1);
+         if (lastTrade.StopPrice == 0) lastTrade.TakeProfitPrice = GetNextLevel(lastTrade.OpenPrice-_minRewardRatio*stopLoss, -1);
       objectName = objectName + "S" + IntegerToString(++shortTradeNumberForDay);
    }
    if (_showEntry)
@@ -608,6 +608,7 @@ void HandleClosedTrade(bool savedTrade = false)
    
          Print("Handling closed trade.  OrderType= " + IntegerToString(lastTrade.OrderType));
          broker.GetClose(lastTrade);
+         if (lastTrade.OrderClosed == 0) return;
       }
       if (_showExit)
       {
@@ -647,6 +648,7 @@ void HandleClosedTrade(bool savedTrade = false)
                if (_showNoEntryZone)
                {
                   datetime rectStart = lastTrade.OrderClosed;
+                  if (rectStart == 0) return;
                   double rectHigh = NormalizeDouble(GetNextLevel(lastTrade.OpenPrice + noEntryPad,1), Digits);
                   if (DEBUG_EXIT)
                   {
