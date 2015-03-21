@@ -93,3 +93,24 @@ There are numerous configuration variable for the Trading Assistant in order to 
 -TradeTrendLineColor: This is a color variable that set the color that the TradeTrendLine will be drawn in. The default is Blue.  If ShowTradeTrendLine is false, this value has no effect.
 
 -SaveConfiguration: I have often found, when using an EA, that there are a few values that I consistently want to set different from the default values.  Unless I have access to the source code (and want to go to the trouble of rebuilding the EA), I have no choice but to enter those values every time I start the EA. Setting this variable to true will copy out each of the configuration variable to a file in the Terminal's Files area.  On subsequent startups, this configuration file will be read and those values used in place of whatever is set in the settings dialog. If you want to start without using the configuration file after you have saved it, simply go into the Files are (by using the File -> Open Data Folder menu item, then navigating down the MQL\Files.  The file is named "PTA_<symbol>_Configuration.txt".  You can delete that file (in which case you will have to save the configuration again if you want to use it), or rename it to something else (in which case you can rename it back the next time you want to use it). Since the file is an editable text file, you can also edit and change the values in the file itself.
+
+
+#Limitations
+
+In my use, PATI Trading Assistant (PTA) has worked exactly as expected 99% of the time. However, there are a couple limitations that you need to understand to avoid some surprises.
+
+The first is that the New Trade Indicator (NTI), which feeds the trade data into PTA, can only track one open trade per pair at a time, including pending orders. If you have a pending order for a pair, and then decide to enter an order manually before cancelling the pending order, then the new order won't be seen, and PTA won't act on it.  
+
+This happens to me occasionally when I get caught up in responding to a sudden change.  There is a way to tell PTA about the trade manually.  NTI communicates trades to PTA through MT4 Global Variables, which are accessible using the Tools -> Global Variables menu of the MT4 platform. Follow this procedure:
+
+1. Cancel the pending order if it is still open.
+
+2. Open the Tools -> Global Variables menu, and locate the variable corresponding to the pair you are trading.  (It will be named "NTI_<symbol>LastOrderId", for example, NTI_EURUSDLastOrderId). Double-click the Value column for that variable.
+
+3. Locate the trade in your terminal, and type the Order number for that trade in to the Global Variable value. Hit enter, and PTA should "see" the trade and act on it.
+
+Another consequence of this limitation is that, if you enter add-on orders to an open position, they will not be handled by PTA, and will have to be handled manually.
+
+The second limitation is based on the design of NTI. In order to reduce network traffic and the load on the CPU, NTI queries the server every second and says, in effect, "How many open orders are there for this account?" As long as that number comes back the same as it was last time was asked, then NTI assumes no new orders have been entered or closed. And 99.9% of the time that is true.
+
+However, if it were to happen that you entered a new order in the same second that an open position was closed, then it is possible that the new order might be missed.  I have never seen this happen, but it's theoretically possible.

@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.26"
+#property version   "0.30"
 #property strict
 
 #include <stdlib.mqh>
@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.26";
+string Version="v0.30";
 string NTIPrefix = "NTI_";
 int DFVersion = 1;
 
@@ -546,7 +546,8 @@ void HandleNewEntry(bool savedTrade = false)
    {
       if (lastTrade.StopPrice ==0 )lastTrade.StopPrice = lastTrade.OpenPrice + stopLoss;
       if (_useNextLevelTPRule)
-         if (lastTrade.StopPrice == 0) lastTrade.TakeProfitPrice = GetNextLevel(lastTrade.OpenPrice-_minRewardRatio*stopLoss, -1);
+         if (lastTrade.TakeProfitPrice == 0) lastTrade.TakeProfitPrice = GetNextLevel(lastTrade.OpenPrice-_minRewardRatio*stopLoss, -1);
+    
       objectName = objectName + "S" + IntegerToString(++shortTradeNumberForDay);
    }
    if (_showEntry)
@@ -680,6 +681,8 @@ void HandleClosedTrade(bool savedTrade = false)
                      }
                      if (existingLow < rectLow)
                      {
+                        if (DEBUG_EXIT)
+                           PrintFormat("Existing log (%s) substituted for new Low(%S)", DoubleToStr(existingLow,Digits), DoubleToStr(rectLow, Digits));
                         rectLow = existingLow;
                      }
                      datetime existingStart = ObjectGetInteger(0, rectName, OBJPROP_TIME1);
@@ -688,6 +691,7 @@ void HandleClosedTrade(bool savedTrade = false)
                         rectStart = existingStart;
                      }
                   }
+                  ObjectDelete(0, rectName); // Just in case it already exists.
                   ObjectCreate(0,rectName, OBJ_RECTANGLE, 0, rectStart, rectHigh, endOfDay, rectLow);
                   ObjectSetInteger(0, rectName, OBJPROP_COLOR, _noEntryZoneColor);
                }

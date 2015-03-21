@@ -1,0 +1,18 @@
+Dear PATI member,
+
+I am happy to be able to share the PATI Trading Assistant with you, and hope that you will find it useful, as I have.
+
+There are 5 files embedded in the attached Zip archive. Two are the MetaTrader executable (.ex4) files that work together to provide the functionality of the trading assistant (NewTradeIndicator.ex4 and PATITradingAssistant.ex4) One is the README file (which includes documentation on Installing the trading assistant, how to set configuration to your liking, and a note on some limitations).  If you have difficulty opening that file, either go to https://github.com/daveh551/PATITradingAssistant, and read it there (starting in the middle of the page). Finally, there are two files of legaleze - the LICENSE and the DISCLAIMER.
+
+Basically, the Disclaimer says the software is being provided free, and use it at your own risk.  If something goes wrong and it blows up your account, you will have my apologies and I will feel really bad, but you can't sue me!
+
+If you are inclined to modify or extend this program, you are free to do so.  The source code is made available to anyone who wants it at the address given previously.  
+
+I would welcome any feedback on things you like, things you don't like, additions or changes you would like to see. I have set it up the way I like to see it in my trading, but some may feel that it clutters their charts.  That's why I have made it so that you can turn almost every feature on or off through configuration.
+
+Happy Trading!
+
+Dave Hanna
+dave@infotouchsys.com
+Twitter: @daveh551
+Skype: daveh551
