@@ -105,12 +105,12 @@ This happens to me occasionally when I get caught up in responding to a sudden c
 
 1. Cancel the pending order if it is still open.
 
-2. Open the Tools -> Global Variables menu, and locate the variable corresponding to the pair you are trading.  (It will be named "NTI_<symbol>LastOrderId", for example, NTI_EURUSDLastOrderId). Double-click the Value column for that variable.
+2. Open the Tools -> Global Variables menu, and locate the variable corresponding to the pair you are trading.  (It will be named "NTI_\<symbol\>LastOrderId", for example, NTI_EURUSDLastOrderId). Double-click the Value column for that variable.
 
 3. Locate the trade in your terminal, and type the Order number for that trade in to the Global Variable value. Hit enter, and PTA should "see" the trade and act on it.
 
 Another consequence of this limitation is that, if you enter add-on orders to an open position, they will not be handled by PTA, and will have to be handled manually.
 
-The second limitation is based on the design of NTI. In order to reduce network traffic and the load on the CPU, NTI queries the server every second and says, in effect, "How many open orders are there for this account?" As long as that number comes back the same as it was last time was asked, then NTI assumes no new orders have been entered or closed. And 99.9% of the time that is true.
+The second limitation is based on the design of NTI. In order to reduce network traffic and the load on the CPU, NTI queries the server every second and says, in effect, "How many open orders are there for this account?" As long as that number comes back the same as it was the last time it was asked, then NTI assumes no new orders have been entered or closed. And 99.9% of the time that is true.
 
 However, if it were to happen that you entered a new order in the same second that an open position was closed, then it is possible that the new order might be missed.  I have never seen this happen, but it's theoretically possible.
