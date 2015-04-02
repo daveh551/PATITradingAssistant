@@ -45,6 +45,8 @@ public:
                         newTrade.OpenPrice = OrderOpenPrice();
                         newTrade.ClosePrice = OrderClosePrice();
                         newTrade.OrderClosed = OrderCloseTime();
+                        newTrade.StopPrice = OrderStopLoss();
+                        newTrade.TakeProfitPrice = OrderTakeProfit();
                         return newTrade;
                     }
                     virtual int GetType(int ticketId)

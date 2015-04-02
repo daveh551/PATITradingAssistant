@@ -1,3 +1,12 @@
+#RELEASE NOTES for v 0.31 4/1/2015
+
+This release fixes a bug in which, if the EA was re-initialized (as by changing the period on a chart, changing parameters, or re-starting the EA) while trades were open trades, it would reset the Stop Loss and Take Profit to calculated values regardless of how they might have been changed.
+
+It also adds some minor feature updates:
+
+1. In the alert message on closing a trade, it will indicate net profit or loss for the trade in pips.
+2. If you create a saved configuration file and then rename it to remove the symbol name (e.g. from "PTA_EURUSD_Configuration.txt" to "PTA__Configuration.txt", that file will then become a "global" configuration file that will be applied to all charts before applying any pair-specific configuration file.
+
 PATITradingAssistant
 ====================
 

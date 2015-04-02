@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.30"
+#property version   "0.31"
 #property strict
 
 #include <stdlib.mqh>
@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.30";
+string Version="v0.31";
 string NTIPrefix = "NTI_";
 int DFVersion = 1;
 
@@ -32,6 +32,7 @@ int debug = true;
 #define DEBUG_EXIT  ((debug & 0x0001) == 0x0001)
 #define DEBUG_GLOBAL  ((debug & 0x0002) == 0x0002)
 #define DEBUG_ENTRY ((debug & 0x0004) == 0x0004)
+#define DEBUG_CONFIG ((debug & 0x0008) == 0x0008)
 bool HeartBeat = true;
 
 extern bool Testing = false;
@@ -90,6 +91,7 @@ string normalizedSymbol;
 string globalLastTradeName;
 string saveFileName;
 string configFileName;
+string globalConfigFileName;
 datetime lastUpdateTime;
 int lastTradeId = 0;
 int oldTradeId = 0;
@@ -274,15 +276,16 @@ void Initialize()
   }
   broker = new Broker(_pairOffsetWithinSymbol);
   configFileName = Prefix + Symbol() + "_Configuration.txt";
+  globalConfigFileName = Prefix + "_Configuration.txt";
   
      if (!SaveConfiguration)
       ApplyConfiguration();
    else
       SaveConfigurationFile();
 
+  PrintConfigValues();
   normalizedSymbol = broker.NormalizeSymbol(Symbol());
   saveFileName = Prefix + normalizedSymbol + "_SaveFile.txt";
-  configFileName = Prefix + normalizedSymbol + "_Configuration.txt";
   stopLoss = CalculateStop(normalizedSymbol) * AdjPoint;
   noEntryPad = _minNoEntryPad * AdjPoint;
   globalLastTradeName = NTIPrefix + normalizedSymbol + "LastOrderId";
@@ -343,16 +346,21 @@ void CopyInitialConfigVariables()
 bool CheckNewBar()
 {
    if(Time[0] == time0) return false;
-     {
-      time0 = Time[0];
-      return true;
-     }
+   time0 = Time[0];
+   return true;
    
 }
 
 void ApplyConfiguration()
 {
-   int fileHandle = FileOpen(configFileName, FILE_ANSI | FILE_TXT | FILE_READ);
+   ApplyConfiguration(globalConfigFileName);
+   ApplyConfiguration(configFileName);
+}
+
+void ApplyConfiguration(string fileName)
+{
+   if (!FileIsExist(fileName)) return;
+   int fileHandle = FileOpen(fileName, FILE_ANSI | FILE_TXT | FILE_READ);
    if (fileHandle == -1) 
    {
       int errcode = GetLastError();
@@ -482,6 +490,28 @@ void SaveConfigurationFile()
    FileClose(fileHandle);
 }
 
+void PrintConfigValues()
+{
+   if (!DEBUG_CONFIG) return;
+   Print( "PairOffsetWithinSymbol: " + IntegerToString(_pairOffsetWithinSymbol) + "\r\n");
+   Print( "DefaultStopPips: " + IntegerToString(_defaultStopPips) + "\r\n");
+   Print( "ExceptionPairs: " + _exceptionPairs +"\r\n");
+   Print( "UseNextLevelTPRule: " + IntegerToString((int) _useNextLevelTPRule ) + "\r\n");
+   Print( "MinRewardRatio: " + DoubleToString(_minRewardRatio, 2 ) + "\r\n");
+   Print( "ShowNoEntryZone: " + IntegerToString((int) _showNoEntryZone ) + "\r\n");
+   Print( "NoEntryZoneColor: " + (string) _noEntryZoneColor + "\r\n");
+   Print( "MinNoEntryPad: " + IntegerToString(_minNoEntryPad) + "\r\n");
+   Print( "EntryIndicator: " + IntegerToString(_entryIndicator) + "\r\n");
+   Print( "ShowInitialStop: " + IntegerToString((int) _showInitialStop) + "\r\n");
+   Print( "ShowExit: " + IntegerToString((int) _showExit) + "\r\n");
+   Print( "WinningExitColor: " + (string) _winningExitColor + "\r\n");
+   Print( "LosingExitColor: " + (string) _losingExitColor + "\r\n");
+   Print( "ShowTradeTrendLine: " + IntegerToString((int) _showTradeTrendLine) + "\r\n");
+   Print( "TradeTrendLineColor: " + (string) _tradeTrendLineColor+ "\r\n");
+   Print( "SendSLandTPToBroker: " + IntegerToString((int) _sendSLandTPToBroker) + "\r\n");
+   Print( "ShowEntry: " + IntegerToString((int) _showEntry) + "\r\n");
+   Print( "AlertOnTrade: " + IntegerToString((int) _alertOnTrade) + "\r\n");
+}
 bool CheckForNewTrade()
 {
    if (lastTradePending)
@@ -602,13 +632,17 @@ void HandleClosedTrade(bool savedTrade = false)
    {
       if (!savedTrade)
       {
+         broker.GetClose(lastTrade);
+         double profit = lastTrade.ClosePrice - lastTrade.OpenPrice;
+         if (lastTrade.OrderType == OP_SELL) profit = profit * -1;
+         profit = NormalizeDouble(profit, Digits)/Point; 
+         if (FiveDig) profit *= .1;
          if(_alertOnTrade)
            {
-               Alert("Old Trade " + IntegerToString(oldTradeId) + " (", + lastTrade.Symbol +") closed.");            
+               Alert("Old Trade " + IntegerToString(oldTradeId) + " (", + lastTrade.Symbol +") closed. (" + DoubleToStr(profit, 1) + ")");            
            }
    
          Print("Handling closed trade.  OrderType= " + IntegerToString(lastTrade.OrderType));
-         broker.GetClose(lastTrade);
          if (lastTrade.OrderClosed == 0) return;
       }
       if (_showExit)
