@@ -36,6 +36,12 @@ Position* trades[];
 const int TRADESRESERVESIZE = 20;
 string GVLastCheck;
 string GVNumbOpenOrders;
+class GlobalVariablePair
+{
+   string GVName;
+   int   OrderId;
+}
+GlobalVariablePair[] currentGVs;
 //+------------------------------------------------------------------+
 //| Custom indicator initialization function                         |
 //+------------------------------------------------------------------+
@@ -117,7 +123,7 @@ void OnTimer()
             if(existingOrderId[j] != NULL)
             {
                Position * closedTrade = existingOrderId[j];
-               string closedTradeGlobal = MakeGVname(closedTrade.Symbol);
+               string closedTradeGlobal = MakeGVname(closedTrade.Symbol, closedTrade.TicketId);
                GlobalVariableSet(closedTradeGlobal, 0);
                RemoveClosedTrade(closedTrade);
                if (CheckPointer(closedTrade) == POINTER_DYNAMIC)
@@ -198,11 +204,11 @@ void AddTrade(Position * newTrade)
    int arrayLen = ArraySize(trades);
    ArrayResize(trades, arrayLen+1, TRADESRESERVESIZE);
    trades[arrayLen] = newTrade;
-   string gvName = MakeGVname(newTrade.Symbol);
+   string gvName = MakeGVname(newTrade.Symbol, newTrade.TicketId);
    GlobalVariableSet(gvName, (double) newTrade.TicketId);
 }
 
-string MakeGVname(string symbol)
+string MakeGVname(string symbol, int ticketID)
 {
    string GVname = Prefix + symbol + "LastOrderId";
    return (GVname);
