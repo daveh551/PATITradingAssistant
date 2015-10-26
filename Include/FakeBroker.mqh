@@ -68,28 +68,37 @@ public:
 FakeBroker::FakeBroker()
   {
    TypeName = "FakeBroker";
-   ArrayResize(OrdersToReturn,4,5);
+   int ix = 0;
+   ArrayResize(OrdersToReturn,5,5);
       Position* order = new Position();
    order.TicketId = 12345;
    order.Symbol = "EURUSD";
 
-   OrdersToReturn[0] = order;
+   OrdersToReturn[ix++] = order;
+   
+   //Change so first two orders returned are both EURUSD
+   
+   order = new Position();
+   order.TicketId = 98765;
+   order.Symbol = "EURUSD";
+   OrdersToReturn[ix++] = order;
+   
    order = new Position();
    order.TicketId = 23456;
    order.Symbol = "GBPUSD";
-   OrdersToReturn[1] = order;
+   OrdersToReturn[ix++] = order;
 
    order = new Position();
    order.TicketId = 34567;
    order.Symbol = "GBPJPY";
-   OrdersToReturn[2] = order;
+   OrdersToReturn[ix++] = order;
 
    order = new Position();
    order.TicketId = 45678;
    order.Symbol = "GBPAUD";
-   OrdersToReturn[3] = order;
+   OrdersToReturn[ix++] = order;
    
-   ArrayResize(OrderIndex, 4, 5);
+   ArrayResize(OrderIndex, 5, 5);
    for(int i=0;i<ArraySize(OrderIndex);i++)
      {
       OrderIndex[i] = i;

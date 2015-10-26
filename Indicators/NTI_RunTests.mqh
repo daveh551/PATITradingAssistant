@@ -59,6 +59,9 @@ void RunTests()
    if (DetectingNewOrderShouldSetGlobalVariable())
       testsPassed++;
    totalTests++;
+   if (DetectingTwoNewOrdersShouldSetGlobalVariable())
+      testsPassed++;
+   totalTests++;
    if (CanDetectClosedOrders())
       testsPassed++;
    totalTests++;
@@ -158,8 +161,9 @@ bool DetectingNewOrderShouldSetGlobalVariable()
    ClearGlobalVariables();
    testBroker.TotalOrdersToReturn =1;
    Position * order = testBroker.OrdersToReturn[0];
-   string GVname = MakeGVname(order.Symbol, order.TicketID);
+   string GVname = MakeGVname(order.Symbol, 1);
    
+   if (!Assert(GVname == Prefix + order.Symbol + "1" + "LastOrderId", "MakeGVname " + GVname + " is not correct")) return false;
    OnTimer();
    if (Assert(GlobalVariableCheck(GVname), "GlobalVariable " + GVname + " was not created."))
    {
@@ -168,12 +172,40 @@ bool DetectingNewOrderShouldSetGlobalVariable()
    return (false);
 }
 
+bool DetectingTwoNewOrdersShouldSetGlobalVariable()
+{
+   FakeBroker *testBroker = broker;
+   numbOpenOrders = 0;
+   ClearTrades();
+   ClearGlobalVariables();
+   testBroker.TotalOrdersToReturn =2;
+   Position * order = testBroker.OrdersToReturn[0];
+   string GVname = MakeGVname(order.Symbol, 1);
+   
+   if (!Assert(GVname == Prefix + order.Symbol + "1" + "LastOrderId", "MakeGVname " + GVname + " is not correct")) return false;
+   OnTimer();
+   if (Assert(GlobalVariableCheck(GVname), "GlobalVariable " + GVname + " was not created."))
+   {
+      if (!Assert(GlobalVariableGet(GVname) == (double) order.TicketId, "GlobalVariable " + GVname + " had value " + DoubleToString(GlobalVariableGet(GVname))))
+         return false;
+   }  
+   GVname = MakeGVname(order.Symbol, 2);
+   if (Assert(GlobalVariableCheck(GVname), "GlobalVariable " + GVname + " was not created."))
+   {
+      return (Assert(GlobalVariableGet(GVname) == (double) testBroker.OrdersToReturn[1].TicketId, "GlobalVariable " + GVname + " had value " + DoubleToStr(GlobalVariableGet(GVname))));
+   }
+   return (false);
+}
+
 void ClearGlobalVariables()
 {
-   string symbol = "EURUSD";
-   string GVname = MakeGVname(symbol, 0);
-   if (GlobalVariableCheck(GVname))
-      GlobalVariableDel(GVname);
+   int gvCount = GlobalVariablesTotal();
+   for (int ix = gvCount-1; ix >= 0; ix--)
+   {
+      string gvName = GlobalVariableName(ix);
+      if (StringFind(gvName, "LastOrderId")!= -1)
+           GlobalVariableDel(gvName);
+   }
 }
 
 
@@ -186,8 +218,9 @@ bool CanDetectClosedOrders()
    testBroker.TotalOrdersToReturn = 1; 
    OnTimer(); // Reinstitute the first order
    Position *existingOrder = testBroker.OrdersToReturn[0];
-   string GVname = MakeGVname(existingOrder.Symbol, existingOrder.TicketID);
-   GlobalVariableSet(GVname, (double) existingOrder.TicketId);
+   string GVname = FindGVname(existingOrder.Symbol, existingOrder.TicketId);
+   if (!Assert(StringFind(GVname, "LastOrderId") != -1, "name returned by FindGVname does not contain LastOrderId"))
+      return false;
    testBroker.TotalOrdersToReturn = 0;
    OnTimer();
    return(Assert(GlobalVariableGet(GVname) == 0, "Existing order ID was not deleted.")); 

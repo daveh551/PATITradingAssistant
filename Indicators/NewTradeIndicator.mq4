@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "1.00"
+#property version   "0.32"
 #property strict
 #property indicator_chart_window
 #include <stdlib.mqh>
@@ -16,7 +16,7 @@
 
 string Title="New Trade Indicator"; 
 string Prefix="NTI_";
-string Version="v0.10";
+string Version="v0.32";
 
 
 string TextFont="Verdana";
@@ -40,8 +40,8 @@ class GlobalVariablePair
 {
    string GVName;
    int   OrderId;
-}
-GlobalVariablePair[] currentGVs;
+};
+GlobalVariablePair *currentGVs[];
 //+------------------------------------------------------------------+
 //| Custom indicator initialization function                         |
 //+------------------------------------------------------------------+
@@ -123,7 +123,7 @@ void OnTimer()
             if(existingOrderId[j] != NULL)
             {
                Position * closedTrade = existingOrderId[j];
-               string closedTradeGlobal = MakeGVname(closedTrade.Symbol, closedTrade.TicketId);
+               string closedTradeGlobal = FindGVname(closedTrade.Symbol, closedTrade.TicketId);
                GlobalVariableSet(closedTradeGlobal, 0);
                RemoveClosedTrade(closedTrade);
                if (CheckPointer(closedTrade) == POINTER_DYNAMIC)
@@ -189,6 +189,30 @@ void ZeroGlobalVariables()
      }
 }
 
+string FindGVname(string symbol, int orderId)
+{
+   int seqNo = 1;
+   while (true)
+   {
+      string gvName = MakeGVname(symbol, seqNo);
+      if (GlobalVariableCheck(gvName))
+      {
+         if (GlobalVariableGet(gvName) == (double) orderId)
+            return gvName;
+         else
+         {
+            seqNo++;
+            continue;
+         }
+      }
+      else
+      {
+         return "";
+      }
+   }
+   return "";
+}
+
 Position * FindOpenTrade(int ticketID)
 {
    for (int ix=0; ix< ArraySize(trades); ix++)
@@ -204,13 +228,49 @@ void AddTrade(Position * newTrade)
    int arrayLen = ArraySize(trades);
    ArrayResize(trades, arrayLen+1, TRADESRESERVESIZE);
    trades[arrayLen] = newTrade;
-   string gvName = MakeGVname(newTrade.Symbol, newTrade.TicketId);
+   string gvName = AddGVname(newTrade.Symbol, newTrade.TicketId);
    GlobalVariableSet(gvName, (double) newTrade.TicketId);
 }
 
-string MakeGVname(string symbol, int ticketID)
+string AddGVname(string symbol, int ticketId)
 {
-   string GVname = Prefix + symbol + "LastOrderId";
+   int seqNo = 1;
+   while (true)
+   {
+      string gvName = MakeGVname(symbol, seqNo);
+      if (GlobalVariableCheck(gvName))
+      {
+         if (GlobalVariableGet(gvName) == 0)
+         {
+            GlobalVariableSet(gvName, (double) seqNo);
+            return (gvName);
+         }
+         else 
+         {
+            if (GlobalVariableGet(gvName) == (double) ticketId)
+            {
+               return ""; // Global Variable already exists - don't add it.
+            }
+            else
+               seqNo++;
+         }
+      }
+      else
+      {
+         // Make a new global variable
+         GlobalVariableSet(gvName, (double) ticketId);
+         return gvName;
+      }
+   }
+   // Should never return from here - should always
+   return "";
+     
+}
+
+string MakeGVname(string symbol, int seqNo)
+{
+   
+   string GVname = Prefix + symbol + IntegerToString(seqNo) + "LastOrderId";
    return (GVname);
 }
 
