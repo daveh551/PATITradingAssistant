@@ -27,19 +27,23 @@ public:
                     }
                     virtual Position*  GetTrade(int TicketID)
                     {
-                     OrderSelect(TicketID, SELECT_BY_TICKET);
+                     SelectOrderByTicket(TicketID);
                      return (GetPosition());
                     }
-                    virtual void SelectOrder(int position)
+                    virtual void SelectOrderByPosition(int position)
                     {
                         OrderSelect(position, SELECT_BY_POS);
                     }
-                    
+                    virtual void SelectOrderByTicket(int ticketId)
+                    {
+                     OrderSelect(ticketId, SELECT_BY_TICKET);                        
+                    }
                     virtual Position * GetPosition()
                     {
                         Position * newTrade = new Position();
                         newTrade.TicketId = OrderTicket();
                         newTrade.OrderType = OrderType();
+                        newTrade.IsPending = newTrade.OrderType != OP_BUY && newTrade.OrderType != OP_SELL;
                         newTrade.Symbol = NormalizeSymbol(OrderSymbol());
                         newTrade.OrderOpened = OrderOpenTime();
                         newTrade.OpenPrice = OrderOpenPrice();

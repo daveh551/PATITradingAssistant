@@ -42,9 +42,26 @@ public:
                     {
                         return (cntGetPosition > 0);
                     }
-                    virtual void SelectOrder(int pos)
+                    virtual void SelectOrderByPosition(int pos)
                     {
                         selectedPosition = pos;
+                    }
+                    virtual void SelectOrderByTicket(int ticketId)
+                    {
+                     for(int ix=0;ix<ArraySize(OrderIndex);ix++)
+                       {
+                        if(OrdersToReturn[OrderIndex[ix]].TicketId == ticketId)
+                        {
+                           selectedPosition = ix;
+                           return;
+                        }
+                       }
+                    }
+                    
+                    virtual int GetType(int ticketId)
+                    {
+                     SelectOrderByTicket(ticketId);
+                     return OrdersToReturn[OrderIndex[selectedPosition]].OrderType;
                     }
                     virtual Position *GetPosition()
                     {
@@ -59,6 +76,7 @@ public:
                         newTrade.OpenPrice = selectedTrade.OpenPrice;
                         newTrade.ClosePrice = selectedTrade.ClosePrice;
                         newTrade.OrderType = selectedTrade.OrderType;
+                        newTrade.IsPending = (selectedTrade.OrderType != OP_BUY && selectedTrade.OrderType != OP_SELL);
                         return newTrade;
                     }
   };

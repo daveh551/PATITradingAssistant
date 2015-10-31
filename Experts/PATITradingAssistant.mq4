@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.31"
+#property version   "0.32"
 #property strict
 
 #include <stdlib.mqh>
@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.31";
+string Version="v0.32";
 string NTIPrefix = "NTI_";
 int DFVersion = 1;
 
@@ -55,10 +55,11 @@ extern color WinningExitColor = Green;
 extern color LosingExitColor = Red;
 extern color TradeTrendLineColor = Blue;
 extern bool SaveConfiguration = false;
+extern int EndOfDayOffsetHours = 0;
 
 const double GVUNINIT = -99999999;
 const string LASTUPDATENAME = "NTI_LastUpdateTime";
-
+string GVPrefix;
 
 //Copies of configuration variables
 bool _testing;
@@ -80,6 +81,7 @@ color _tradeTrendLineColor;
 bool _sendSLandTPToBroker;
 bool _showEntry;
 bool _alertOnTrade;
+int _endOfDayOffsetHours;
 
 bool alertedThisBar = false;
 datetime time0;
@@ -88,7 +90,6 @@ int longTradeNumberForDay = 0;
 int shortTradeNumberForDay =0;
 datetime endOfDay;
 string normalizedSymbol;
-string globalLastTradeName;
 string saveFileName;
 string configFileName;
 string globalConfigFileName;
@@ -98,8 +99,10 @@ int oldTradeId = 0;
 bool lastTradePending = false;
 double stopLoss;
 double noEntryPad;
-Position * lastTrade = NULL;
+Position * activeTrade = NULL;
 Broker * broker;
+int totalActiveTrades;
+Position * activeTrades[];
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
@@ -113,9 +116,9 @@ int OnInit()
       FiveDig = 1;
    AdjPoint = Point * FiveDig;
    DrawVersion(); 
-
    UpdateGV();
    CopyInitialConfigVariables();
+   InitializeActiveTradeArray();
 
    
 //--- create timer
@@ -141,7 +144,7 @@ void OnDeinit(const int reason)
    //----
    if (reason != REASON_CHARTCHANGE && reason!= REASON_PARAMETERS && reason != REASON_RECOMPILE)
       DeleteAllObjects();
-   if (CheckPointer(lastTrade) == POINTER_DYNAMIC) delete lastTrade;
+   if (CheckPointer(activeTrade) == POINTER_DYNAMIC) delete activeTrade;
    if (CheckPointer(broker) == POINTER_DYNAMIC) delete broker;
    //----
    return;
@@ -153,34 +156,57 @@ void OnDeinit(const int reason)
 void OnTick()
   {
 //---
-   if (CheckNewBar())
-   {
-      alertedThisBar = false;
-      if (Time[0] >= endOfDay)
+   if (!_testing)
+   { 
+      if ( CheckNewBar())
       {
+         alertedThisBar = false;
          UpdateGV();
-         endOfDay += 24*60*60;
-         CleanupEndOfDay();
+         if (Time[0] >= endOfDay)
+         {
+           endOfDay += 24*60*60;
+           CleanupEndOfDay();
+         }
+      }
+      if (!alertedThisBar)
+      {
+         CheckNTI();
       }
    }
-   if (!alertedThisBar)
-   {
-      CheckNTI();
-   }
-   if (lastTradeId == 0 || lastTradePending)
-   {
-      if(CheckForNewTrade())
-        {
-         HandleNewEntry();
-        }
-   }
-   else
-   {
-      if(CheckForClosedTrade())
-        {
-         HandleClosedTrade();
-        }
-   }
+   CheckForClosedTrades();
+   CheckForPendingTradesGoneActive();
+   CheckForNewTrades();
+//   while(true)
+//   {
+// 
+//      string gvName = MakeGVname(seqNo);
+//      if (GlobalVariableCheck(gvName))
+//      {
+//         lastTradeId = (int) GlobalVariableGet(gvName);
+//         {  
+//            //if (lastTradeId == 0 || lastTradePending)
+//            if (CheckForNewTrade(lastTradeId))
+//            {
+//               //if(CheckForNewTrade(gvName))
+//               //{
+//                  HandleNewEntry();
+//               //}
+//            }
+//            else
+//            {
+//               if(CheckForClosedTrade(gvName))
+//               {
+//                  HandleClosedTrade(gvName);
+//               }
+//            }
+//         seqNo++;
+//      }
+//      }
+//      else
+//      {
+//         break;
+//      }
+//   }
   }
 //+------------------------------------------------------------------+
 //| Timer function                                                   |
@@ -189,6 +215,11 @@ void OnTimer()
   {
 //---
       HeartBeat();
+  }
+  
+  string MakeGVname( int sequence)
+  {
+   return GVPrefix + IntegerToString(sequence) + "LastOrderId";
   }
 //+------------------------------------------------------------------+
 void DeleteAllObjects()
@@ -275,6 +306,7 @@ void Initialize()
     lastUpdateTime = (datetime) (int) updateVar;
   }
   broker = new Broker(_pairOffsetWithinSymbol);
+  GVPrefix = NTIPrefix + broker.NormalizeSymbol(Symbol());
   configFileName = Prefix + Symbol() + "_Configuration.txt";
   globalConfigFileName = Prefix + "_Configuration.txt";
   
@@ -288,19 +320,17 @@ void Initialize()
   saveFileName = Prefix + normalizedSymbol + "_SaveFile.txt";
   stopLoss = CalculateStop(normalizedSymbol) * AdjPoint;
   noEntryPad = _minNoEntryPad * AdjPoint;
-  globalLastTradeName = NTIPrefix + normalizedSymbol + "LastOrderId";
-  Print("globalLastTradeNaem = " + globalLastTradeName);
   MqlDateTime dtStruct;
   TimeToStruct(TimeCurrent(), dtStruct);
   dtStruct.hour = 0;
   dtStruct.min = 0;
   dtStruct.sec = 0;
-  endOfDay = StructToTime(dtStruct) +(24*60*60);
+  endOfDay = StructToTime(dtStruct) +(24*60*60) + (_endOfDayOffsetHours * 60 * 60);
   longTradeNumberForDay = 0;
   shortTradeNumberForDay = 0;
   ReadOldTrades();
   lastTradeId = 0;
-  CheckForNewTrade();
+  CheckForNewTrade("");
   
 
 }
@@ -340,6 +370,7 @@ void CopyInitialConfigVariables()
    _sendSLandTPToBroker = SendSLandTPToBroker;
    _showEntry = ShowEntry;
    _alertOnTrade = AlertOnTrade;
+   _endOfDayOffsetHours = EndOfDayOffsetHours;
 
 }
 
@@ -452,6 +483,10 @@ void ApplyConfiguration(string fileName)
                 {
                   _alertOnTrade = (bool) StringToInteger(value);
                 }
+         else if (var = "EndOfDayOffsetHours")
+               {
+                  _endOfDayOffsetHours = StringToInteger(value);
+               }
         }
      }
    FileClose(fileHandle);
@@ -484,6 +519,7 @@ void SaveConfigurationFile()
    FileWriteString(fileHandle, "SendSLandTPToBroker: " + IntegerToString((int) _sendSLandTPToBroker) + "\r\n");
    FileWriteString(fileHandle, "ShowEntry: " + IntegerToString((int) _showEntry) + "\r\n");
    FileWriteString(fileHandle, "AlertOnTrade: " + IntegerToString((int) _alertOnTrade) + "\r\n");
+   FileWriteString(fileHandle, "EndOfDayOffsetHours: " + IntegerToString(_endOfDayOffsetHours) + "\r\n");
 
 
    
@@ -511,120 +547,229 @@ void PrintConfigValues()
    Print( "SendSLandTPToBroker: " + IntegerToString((int) _sendSLandTPToBroker) + "\r\n");
    Print( "ShowEntry: " + IntegerToString((int) _showEntry) + "\r\n");
    Print( "AlertOnTrade: " + IntegerToString((int) _alertOnTrade) + "\r\n");
+   Print( "EndOfDayOffsetHours: " + IntegerToString(_endOfDayOffsetHours) + "\r\n");
 }
-bool CheckForNewTrade()
-{
-   if (lastTradePending)
+
+   void CheckForClosedTrades()
    {
-      if (GetNewTradeId() == 0)
+      int seqNo = 1;
+      while (true)
+      {
+         string gvName = GVPrefix + IntegerToString(seqNo) + "LastOrderId";
+         if (!GlobalVariableCheck(gvName)) break;
+         int tradeId = (int) GlobalVariableGet(gvName);
+         if (tradeId == 0)
          {
-            lastTradePending = false;
-            lastTradeId = 0;
-            return false;
+            //Now we have to find which trade was closed.
+            //For efficiency, let's do a quick hack and check for only one trade - 
+            // which will cover 90% of the cases.
+            if(totalActiveTrades == 1)
+            {
+               lastTradeId = activeTrades[0].TicketId;
+               activeTrade = activeTrades[0];
+               HandleClosedTrade();
+               if (CheckPointer(activeTrades[0]) == POINTER_DYNAMIC) delete activeTrades[0];
+               activeTrades[0] = NULL;
+               totalActiveTrades = 0;
+            }
+            for(int ix=0;ix<totalActiveTrades;ix++)
+              {
+                 
+              }        
          }
-      int orderType = broker.GetType(lastTradeId);
-      if (orderType == OP_BUY || orderType == OP_SELL)
-        {
-            lastTradePending = false;
-            return true;
-        }
-      return false;
+         seqNo++;
+      }
    }
-   lastTradeId = GetNewTradeId();
-   if (lastTradeId == 0) return false;
-   lastTrade = broker.GetTrade(lastTradeId);
-   int orderType = lastTrade.OrderType;
-   if (orderType == OP_BUY || orderType == OP_SELL) 
+   
+   void CheckForPendingTradesGoneActive()
    {
-      lastTradePending = false;
-      return true;
+      int seqNo = 1;
+      while (true)
+      {
+         string gvName = GVPrefix + IntegerToString(seqNo) + "LastOrderId";
+         if (!GlobalVariableCheck(gvName)) break;
+         int tradeId = (int) GlobalVariableGet(gvName);
+         if (tradeId != 0)
+         {
+            for(int ix=0;ix<totalActiveTrades;ix++)
+              {
+                  if (activeTrades[ix].TicketId == tradeId)
+                  {
+                     if (activeTrades[ix].IsPending)
+                     {
+                        int orderType = broker.GetType(tradeId);
+                        if (orderType == OP_BUY || orderType == OP_SELL) //then no longer pending.
+                        {
+                           if (CheckPointer(activeTrades[ix]) == POINTER_DYNAMIC) delete activeTrades[ix];
+                           activeTrades[ix] = broker.GetTrade(tradeId);
+                           activeTrade = activeTrades[ix];
+                           HandlePendingTradeGoneActive();
+                        }
+                     }
+                     break;
+                  }
+              }
+           }
+         seqNo++;
+      }
+
    }
-   lastTradePending = true;
-   return false;
-}
+   
+   void CheckForNewTrades()
+   {
+      int seqNo = 1;
+      while (true)
+      {
+         string gvName = GVPrefix + IntegerToString(seqNo) + "LastOrderId";
+         if (!GlobalVariableCheck(gvName)) break;
+         int tradeId = (int) GlobalVariableGet(gvName);
+         if(CheckForNewTrade(tradeId))
+           {
+              HandleNewEntry(tradeId);
+           }
+         seqNo++;
+      }
+   }
 
-int GetNewTradeId()
+bool CheckForNewTrade(int tradeId)
 {
-   double id;
-   GlobalVariableGet(globalLastTradeName, id);
-   return ((int) id);
+   if (tradeId == 0) return false;
+   if (ArraySize(activeTrades)== 0) return true;
+   for(int ix=0;ix<ArraySize(activeTrades);ix++)
+     {
+      if(activeTrades[ix]  != NULL && activeTrades[ix].TicketId== tradeId) return false;
+     }
+   return true;
 }
+//bool CheckForNewTrade(string globalVariableName)
+//{
+//   if (lastTradePending)
+//   {
+//      if (GetNewTradeId() == 0)
+//         {
+//            lastTradePending = false;
+//            lastTradeId = 0;
+//            return false;
+//         }
+//      int orderType = broker.GetType(lastTradeId);
+//      if (orderType == OP_BUY || orderType == OP_SELL)
+//        {
+//            lastTradePending = false;
+//            return true;
+//        }
+//      return false;
+//   }
+//   lastTradeId = GetNewTradeId();
+//   if (lastTradeId == 0) return false;
+//   activeTrade = broker.GetTrade(lastTradeId);
+//   int orderType = activeTrade.OrderType;
+//   if (orderType == OP_BUY || orderType == OP_SELL) 
+//   {
+//      lastTradePending = false;
+//      return true;
+//   }
+//   lastTradePending = true;
+//   return false;
+//}
 
-void HandleNewEntry(bool savedTrade = false)
+//int GetNewTradeId()
+//{
+//   double id;
+//   //GlobalVariableGet(globalLastTradeName, id);
+//   return ((int) id);
+//}
+
+void HandleNewEntry( int tradeId, bool savedTrade = false)
 {
-   if (CheckPointer(lastTrade) == POINTER_DYNAMIC) delete lastTrade;
-   lastTrade = broker.GetTrade(lastTradeId);
+   // don't want to delete activeTrade anymore since it's only a copy of the main pointer
+   //if (CheckPointer(activeTrade) == POINTER_DYNAMIC) delete activeTrade;
+   totalActiveTrades++;
+   if (totalActiveTrades > ArraySize(activeTrades))
+      ArrayResize(activeTrades, totalActiveTrades, 10);
+   activeTrades[totalActiveTrades-1] = broker.GetTrade(tradeId);
+   activeTrade = activeTrades[totalActiveTrades -1];
+   lastTradeId = tradeId;
+   lastTradePending = activeTrade.IsPending;
    if (!savedTrade)
    {
       if(_alertOnTrade)
         {
-            Alert("New Trade Entered for " + normalizedSymbol + ". Id = " + IntegerToString(lastTradeId) +". OpenPrice = " + DoubleToStr(lastTrade.OpenPrice, 5));
+            Alert("New Trade Entered for " + normalizedSymbol + ". Id = " + IntegerToString(lastTradeId) +". OpenPrice = " + DoubleToStr(activeTrade.OpenPrice, 5));
          
         }
       SaveTradeToFile();
    }
+   
+   HandleTradeEntry(false, savedTrade);
 
+
+}
+
+void HandlePendingTradeGoneActive()
+{
+   HandleTradeEntry(true);
+}
+void HandleTradeEntry(bool wasPending, bool savedTrade = false)
+{
    string objectName = Prefix + "Entry";
-   if (lastTrade.OrderType == OP_BUY)
+   if (activeTrade.OrderType == OP_BUY)
    {
-      if (lastTrade.StopPrice == 0) lastTrade.StopPrice = lastTrade.OpenPrice - stopLoss;
+      if (activeTrade.StopPrice == 0) activeTrade.StopPrice = activeTrade.OpenPrice - stopLoss;
       if (_useNextLevelTPRule)
-         if (lastTrade.TakeProfitPrice == 0) lastTrade.TakeProfitPrice = GetNextLevel(lastTrade.OpenPrice + _minRewardRatio*stopLoss, 1);
+         if (activeTrade.TakeProfitPrice == 0) activeTrade.TakeProfitPrice = GetNextLevel(activeTrade.OpenPrice + _minRewardRatio*stopLoss, 1);
       objectName = objectName + "L" + IntegerToString(++longTradeNumberForDay);
    }  
    else
    {
-      if (lastTrade.StopPrice ==0 )lastTrade.StopPrice = lastTrade.OpenPrice + stopLoss;
+      if (activeTrade.StopPrice ==0 )activeTrade.StopPrice = activeTrade.OpenPrice + stopLoss;
       if (_useNextLevelTPRule)
-         if (lastTrade.TakeProfitPrice == 0) lastTrade.TakeProfitPrice = GetNextLevel(lastTrade.OpenPrice-_minRewardRatio*stopLoss, -1);
+         if (activeTrade.TakeProfitPrice == 0) activeTrade.TakeProfitPrice = GetNextLevel(activeTrade.OpenPrice-_minRewardRatio*stopLoss, -1);
     
       objectName = objectName + "S" + IntegerToString(++shortTradeNumberForDay);
    }
    if (_showEntry)
    {
-   ObjectCreate(0, objectName, OBJ_ARROW, 0, lastTrade.OrderOpened, lastTrade.OpenPrice);
+   ObjectCreate(0, objectName, OBJ_ARROW, 0, activeTrade.OrderOpened, activeTrade.OpenPrice);
    ObjectSetInteger(0, objectName, OBJPROP_ARROWCODE, _entryIndicator);
    ObjectSetInteger(0, objectName, OBJPROP_COLOR, Blue);
    }
    if (DEBUG_ENTRY)
    {
-      Print("Setting TakeProfit targe at " + DoubleToStr(lastTrade.TakeProfitPrice, Digits));
+      Print("Setting TakeProfit targe at " + DoubleToStr(activeTrade.TakeProfitPrice, Digits));
    }
    if (_showInitialStop)
    {
       StringReplace(objectName, "Entry","Stop");
-      ObjectCreate(0, objectName, OBJ_ARROW, 0, lastTrade.OrderOpened, lastTrade.StopPrice);
+      ObjectCreate(0, objectName, OBJ_ARROW, 0, activeTrade.OrderOpened, activeTrade.StopPrice);
       ObjectSetInteger(0, objectName, OBJPROP_ARROWCODE, 4);
       ObjectSetInteger(0, objectName, OBJPROP_COLOR, Red);
    }
-   if (_sendSLandTPToBroker && !savedTrade)
+   if (_sendSLandTPToBroker && !savedTrade && !_testing)
    {
-      broker.SetSLandTP(lastTrade);
+      broker.SetSLandTP(activeTrade);
    }    
-
 }
-
-bool CheckForClosedTrade()
-{
-    oldTradeId = lastTradeId;
-   lastTradeId = GetNewTradeId();
-   if(lastTradeId == 0)
-   {
-      return true;
-   }
-   return false;
-
-}
+//bool CheckForClosedTrade(string globalVariableName)
+//{
+//    oldTradeId = lastTradeId;
+//   lastTradeId = GetNewTradeId();
+//   if(lastTradeId == 0)
+//   {
+//      return true;
+//   }
+//   return false;
+//
+//}
 
 void HandleClosedTrade(bool savedTrade = false)
 {
-   if(CheckPointer(lastTrade) == POINTER_INVALID)
+   if(CheckPointer(activeTrade) == POINTER_INVALID)
    {
       if (!savedTrade)
       {
          if(_alertOnTrade)
            {
-               Alert("Old Trade " + IntegerToString(oldTradeId) + " closed. INVALID POINTER for lastTrade");      
+               Alert("Old Trade " + IntegerToString(oldTradeId) + " closed. INVALID POINTER for activeTrade");      
            }
       }
    }
@@ -632,24 +777,24 @@ void HandleClosedTrade(bool savedTrade = false)
    {
       if (!savedTrade)
       {
-         broker.GetClose(lastTrade);
-         double profit = lastTrade.ClosePrice - lastTrade.OpenPrice;
-         if (lastTrade.OrderType == OP_SELL) profit = profit * -1;
+         broker.GetClose(activeTrade);
+         double profit = activeTrade.ClosePrice - activeTrade.OpenPrice;
+         if (activeTrade.OrderType == OP_SELL) profit = profit * -1;
          profit = NormalizeDouble(profit, Digits)/Point; 
          if (FiveDig) profit *= .1;
          if(_alertOnTrade)
            {
-               Alert("Old Trade " + IntegerToString(oldTradeId) + " (", + lastTrade.Symbol +") closed. (" + DoubleToStr(profit, 1) + ")");            
+               Alert("Old Trade " + IntegerToString(oldTradeId) + " (", + activeTrade.Symbol +") closed. (" + DoubleToStr(profit, 1) + ")");            
            }
    
-         Print("Handling closed trade.  OrderType= " + IntegerToString(lastTrade.OrderType));
-         if (lastTrade.OrderClosed == 0) return;
+         Print("Handling closed trade.  OrderType= " + IntegerToString(activeTrade.OrderType));
+         if (activeTrade.OrderClosed == 0) return;
       }
       if (_showExit)
       {
          string objName = Prefix + "Exit";
          color arrowColor;
-         if(lastTrade.OrderType == OP_BUY)
+         if(activeTrade.OrderType == OP_BUY)
          {
             objName += "L" + IntegerToString(longTradeNumberForDay);
          }
@@ -658,7 +803,7 @@ void HandleClosedTrade(bool savedTrade = false)
             objName += "S" + IntegerToString(shortTradeNumberForDay);
          }
       
-         ObjectCreate(0, objName, OBJ_ARROW, 0, lastTrade.OrderClosed, lastTrade.ClosePrice);
+         ObjectCreate(0, objName, OBJ_ARROW, 0, activeTrade.OrderClosed, activeTrade.ClosePrice);
          ObjectSetInteger(0, objName, OBJPROP_ARROWCODE, _entryIndicator + 1);
          ObjectSetInteger(0, objName, OBJPROP_COLOR, arrowColor);
          if (_showTradeTrendLine)
@@ -666,14 +811,14 @@ void HandleClosedTrade(bool savedTrade = false)
             
             string trendLineName = objName;
             StringReplace(trendLineName, "Exit", "Trend");
-            ObjectCreate(0, trendLineName, OBJ_TREND, 0, lastTrade.OrderOpened, lastTrade.OpenPrice, lastTrade.OrderClosed, lastTrade.ClosePrice);
+            ObjectCreate(0, trendLineName, OBJ_TREND, 0, activeTrade.OrderOpened, activeTrade.OpenPrice, activeTrade.OrderClosed, activeTrade.ClosePrice);
             ObjectSetInteger(0, trendLineName, OBJPROP_COLOR, Blue);
             ObjectSetInteger(0, trendLineName, OBJPROP_RAY, false);
             ObjectSetInteger(0, trendLineName, OBJPROP_STYLE, STYLE_DASH);
             ObjectSetInteger(0, trendLineName, OBJPROP_WIDTH, 1);
          }
-         if ( (lastTrade.OrderType == OP_BUY && lastTrade.ClosePrice >= lastTrade.OpenPrice) ||
-            (lastTrade.OrderType == OP_SELL && lastTrade.ClosePrice <= lastTrade.OpenPrice)) // Winning trade
+         if ( (activeTrade.OrderType == OP_BUY && activeTrade.ClosePrice >= activeTrade.OpenPrice) ||
+            (activeTrade.OrderType == OP_SELL && activeTrade.ClosePrice <= activeTrade.OpenPrice)) // Winning trade
             {
                ObjectSetInteger(0, objName, OBJPROP_COLOR, _winningExitColor);
             }
@@ -682,19 +827,19 @@ void HandleClosedTrade(bool savedTrade = false)
                ObjectSetInteger(0, objName, OBJPROP_COLOR, _losingExitColor);
                if (_showNoEntryZone)
                {
-                  datetime rectStart = lastTrade.OrderClosed;
+                  datetime rectStart = activeTrade.OrderClosed;
                   if (rectStart == 0) return;
-                  double rectHigh = NormalizeDouble(GetNextLevel(lastTrade.OpenPrice + noEntryPad,1), Digits);
+                  double rectHigh = NormalizeDouble(GetNextLevel(activeTrade.OpenPrice + noEntryPad,1), Digits);
                   if (DEBUG_EXIT)
                   {
                      PrintFormat("ExitZone high = %s (OpenPrice= %s, noEntryPad=%s, arg=%s", DoubleToStr(rectHigh, Digits),
-                        DoubleToStr(lastTrade.OpenPrice, Digits), DoubleToStr(noEntryPad, Digits), DoubleToStr(lastTrade.OpenPrice + noEntryPad));
+                        DoubleToStr(activeTrade.OpenPrice, Digits), DoubleToStr(noEntryPad, Digits), DoubleToStr(activeTrade.OpenPrice + noEntryPad));
                   }
-                  double rectLow = NormalizeDouble(GetNextLevel(lastTrade.OpenPrice - noEntryPad, -1), Digits);
+                  double rectLow = NormalizeDouble(GetNextLevel(activeTrade.OpenPrice - noEntryPad, -1), Digits);
                   if (DEBUG_EXIT)
                   {
                      PrintFormat("ExitZone low = %s (OpenPrice= %s, noEntryPad=%s, arg=%s", DoubleToStr(rectLow, Digits),
-                        DoubleToStr(lastTrade.OpenPrice, Digits), DoubleToStr(noEntryPad, Digits), DoubleToStr(lastTrade.OpenPrice - noEntryPad));
+                        DoubleToStr(activeTrade.OpenPrice, Digits), DoubleToStr(noEntryPad, Digits), DoubleToStr(activeTrade.OpenPrice - noEntryPad));
                   }
                   string rectName = Prefix + "NoEntryZone";
                   if (ObjectFind(rectName) >= 0) 
@@ -731,10 +876,10 @@ void HandleClosedTrade(bool savedTrade = false)
                }
            }
       }
-      if (CheckPointer(lastTrade) == POINTER_DYNAMIC)
-         delete lastTrade;
+      if (CheckPointer(activeTrade) == POINTER_DYNAMIC)
+         delete activeTrade;
    }
-   lastTrade = NULL;
+   activeTrade = NULL;
    
 }
 
@@ -862,8 +1007,8 @@ void ReadOldTrades()
                StringReplace(line, "Trade ID: ", "");
                int tradeId = StrToInteger(line);
                lastTradeId = tradeId;
-               HandleNewEntry(true);
-               if (lastTrade.OrderClosed != 0)
+               HandleNewEntry(tradeId,true);
+               if (activeTrade.OrderClosed != 0)
                {
                   HandleClosedTrade(true);
                }
@@ -881,4 +1026,9 @@ datetime GetDate(datetime time)
    TimeToStruct(time, timeStruct);
    timeStruct.hour = 0; timeStruct.min = 0; timeStruct.sec = 0;
    return (StructToTime(timeStruct));
+}
+void InitializeActiveTradeArray()
+{
+   ArrayResize(activeTrades, 0, 10);
+   totalActiveTrades = 0;  
 }
