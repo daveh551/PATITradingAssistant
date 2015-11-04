@@ -84,6 +84,36 @@ void RunTests()
       ++testsPassed;
    totalTests++;
    CleanUpTestTrades();
+   if (CanDetectFirstPendingTradeNowActiveFromAmongMultipleTrades())
+      ++testsPassed;
+   totalTests++;
+   CleanUpTestTrades();
+   if (CanDetectSecondPendingTradeNowActiveFromAmongMultipleTrades())
+      ++testsPassed;
+   totalTests++;
+   CleanUpTestTrades();
+   if (CanDetectMultiplePendingTradesGoingActive())
+      ++testsPassed;
+   totalTests++;
+   CleanUpTestTrades();
+   if (CanDetectActiveTradeBeingClosed())
+      ++testsPassed;
+   totalTests++;
+   CleanUpTestTrades();
+   if (CanDetectMultipleActiveTradesWithFirstOneBeingClosed())
+      ++testsPassed;
+   totalTests++;
+   CleanUpTestTrades();
+   if (CanDetectMultipleActiveTradesWithSecondOneBeingClosed())
+      ++testsPassed;
+   totalTests++;
+   CleanUpTestTrades();
+   
+   if (CanDetectMultipleActiveTradesWithAllTradesBeingClosed())
+      ++testsPassed;
+   totalTests++;
+   CleanUpTestTrades();
+   
    double nextLevelTestValues[] = {110.80,110.00, 110.01, 110.05, 110.10, 110.19, 110.20, 110.21, 110.25, 110.39, 110.40,
       110.49, 110.50, 110.51, 110.60, 110.70, 110.799, 110.80, 110.801, 110.90, 110.999, 111,
       1.1400, 1.14001, 1.1410, 1.14199, 1.1420, 1.14201, 1.1430, 1.14499, 1.14500, 1.14501, 1.1460, 1.1470, 1.14799,
@@ -311,6 +341,174 @@ bool CanDetectPendingTradeNowDeleted()
    if (!Assert(totalActiveTrades == 0, "Number of Active Orders is not 0")) return false;
    if (!Assert(ArraySize(activeTrades) == 1, "activeTrades array size is not 1")) return false;
    return Assert(activeTrades[0] == NULL, "Trade not deleted from array");
+}
+
+//Scenario 10
+      // 10. Multiple pending trades previously, 1 trade now active
+bool CanDetectFirstPendingTradeNowActiveFromAmongMultipleTrades()
+{
+   Print ("Beginning CanDetectFirstPendingTradeNowActiveFromAmongMultipleTrades");
+   FakeBroker *testBroker = broker;
+   InitializeActiveTradeArray();
+   ClearGlobalVariables();
+   string gvName = GVPrefix + "1LastOrderId";
+   GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
+   testBroker.OrdersToReturn[0].OrderType = OP_BUYLIMIT;
+   gvName = GVPrefix + "2LastOrderId";
+   GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[1].TicketId);
+   testBroker.OrdersToReturn[1].OrderType = OP_SELLLIMIT;
+   
+   OnTick();  // Set precondition of multiple pending orders
+   testBroker.OrdersToReturn[0].OrderType = OP_BUY;
+   OnTick();
+   if (!Assert(totalActiveTrades == 2, "Number of Active Orders is not 2")) return false;
+   if (!Assert(activeTrades[0].IsPending == false, "IsPending for first trade is set")) return false;
+   return (Assert(activeTrades[1].IsPending, "IsPending for first trade is not set"));
+   
+}
+//Scenario 10a
+      // 10. Multiple pending trades previously, 1 trade now active
+bool CanDetectSecondPendingTradeNowActiveFromAmongMultipleTrades()
+{
+   Print ("Beginning CanDetectSecondPendingTradeNowActiveFromAmongMultipleTrades");
+   FakeBroker *testBroker = broker;
+   InitializeActiveTradeArray();
+   ClearGlobalVariables();
+   string gvName = GVPrefix + "1LastOrderId";
+   GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
+   testBroker.OrdersToReturn[0].OrderType = OP_BUYLIMIT;
+   gvName = GVPrefix + "2LastOrderId";
+   GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[1].TicketId);
+   testBroker.OrdersToReturn[1].OrderType = OP_SELLLIMIT;
+   
+   OnTick();  // Set precondition of multiple pending orders
+   testBroker.OrdersToReturn[1].OrderType = OP_SELL;
+   OnTick();
+   if (!Assert(totalActiveTrades == 2, "Number of Active Orders is not 2")) return false;
+   if (!Assert(activeTrades[0].IsPending, "IsPending for first trade is not set")) return false;
+   return (Assert(activeTrades[1].IsPending == false, "IsPending for first trade is set"));
+   
+}
+//Scenario 11
+      // 11. Multiple pending trades previously, multiple trades now active
+
+bool CanDetectMultiplePendingTradesGoingActive()
+{
+   Print ("Beginning CanDetectMultiplePendingTradesGoingActive");
+   FakeBroker *testBroker = broker;
+   InitializeActiveTradeArray();
+   ClearGlobalVariables();
+   string gvName = GVPrefix + "1LastOrderId";
+   GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
+   testBroker.OrdersToReturn[0].OrderType = OP_BUYLIMIT;
+   gvName = GVPrefix + "2LastOrderId";
+   GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[1].TicketId);
+   testBroker.OrdersToReturn[1].OrderType = OP_SELLLIMIT;
+   OnTick();  // Set precondition of multiple pending orders
+   testBroker.OrdersToReturn[0].OrderType = OP_BUY;
+   testBroker.OrdersToReturn[1].OrderType = OP_SELL;
+
+   OnTick();
+   if (!Assert(totalActiveTrades == 2, "Number of Active Orders is not 2")) return false;
+   if (!Assert(activeTrades[0].IsPending == false, "IsPending for first trade is set")) return false;
+   return (Assert(activeTrades[1].IsPending == false, "IsPending for first trade is set"));
+}
+
+//Scenario 12
+      // 12. 1 active trade previously, trade now closed
+bool CanDetectActiveTradeBeingClosed()
+{
+   Print ("Beginning CanDetectActiveTradeBeingClosed");
+   FakeBroker *testBroker = broker;
+   InitializeActiveTradeArray();
+   ClearGlobalVariables();
+   string gvName = GVPrefix + "1LastOrderId";
+   GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
+   
+   OnTick();  // Set up precondition - one active trade
+   GlobalVariableSet(gvName, 0);
+   testBroker.OrdersToReturn[0].OrderClosed = TimeCurrent();
+   OnTick();
+   if (!Assert(totalActiveTrades == 0, "Number of Active Orders is not 0")) return false;
+   if (!Assert(ArraySize(activeTrades) == 1, "activeTrades array is not size 1")) return false;
+   return Assert(activeTrades[0] == NULL, "First entry in activeTrades is not null");
+   
+
+}
+
+//Scenario 13
+      // 13. multiple active trades previously, some trades now closed
+bool CanDetectMultipleActiveTradesWithFirstOneBeingClosed()
+{
+   Print ("Beginning CanDetectMultipleActiveTradesWithFirstOneBeingClosed");
+   FakeBroker *testBroker = broker;
+   InitializeActiveTradeArray();
+   ClearGlobalVariables();
+   string gvName = GVPrefix + "1LastOrderId";
+   GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
+   gvName = GVPrefix + "2LastOrderId";
+   GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[1].TicketId);
+   
+   OnTick();  // Set up precondition - multipe active trades
+   gvName = GVPrefix + "1LastOrderId";
+   GlobalVariableSet(gvName, 0); //Close first one
+   testBroker.OrdersToReturn[0].OrderClosed = TimeCurrent();
+   OnTick();   
+   if (!Assert(totalActiveTrades == 1, "Number of open orders is not 1)")) return false;
+   if (!Assert(ArraySize(activeTrades) == 2, "activeOrder array size is not 2")) return false;
+   if (!Assert(CheckPointer(activeTrades[0]) == POINTER_DYNAMIC, "first active order is not a valid pointer"))return false;
+   return Assert(activeTrades[1] == NULL, "second active order is not null");
+}
+
+//Scenario 13a
+      // 13. multiple active trades previously, some trades now closed
+bool CanDetectMultipleActiveTradesWithSecondOneBeingClosed()
+{
+   Print ("Beginning CanDetectMultipleActiveTradesWithSecondOneBeingClosed");
+   FakeBroker *testBroker = broker;
+   InitializeActiveTradeArray();
+   ClearGlobalVariables();
+   string gvName = GVPrefix + "1LastOrderId";
+   GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
+   gvName = GVPrefix + "2LastOrderId";
+   GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[1].TicketId);
+   
+   OnTick();  // Set up precondition - multipe active trades
+   gvName = GVPrefix + "2LastOrderId";
+   GlobalVariableSet(gvName, 0); //Close second one
+   testBroker.OrdersToReturn[1].OrderClosed = TimeCurrent();
+   OnTick();   
+   if (!Assert(totalActiveTrades == 1, "Number of open orders is not 1)")) return false;
+   if (!Assert(ArraySize(activeTrades) == 2, "activeOrder array size is not 2")) return false;
+   if (!Assert(CheckPointer(activeTrades[0]) == POINTER_DYNAMIC, "first active order is not a valid pointer"))return false;
+   return Assert(activeTrades[1] == NULL, "second active order is not null");
+}
+
+//Scenario 14
+      // 14. multiple active trades previously, all trades now closed
+bool CanDetectMultipleActiveTradesWithAllTradesBeingClosed()
+{
+   Print ("Beginning CanDetectMultipleActiveTradesWithAllTradesBeingClosed");
+   FakeBroker *testBroker = broker;
+   InitializeActiveTradeArray();
+   ClearGlobalVariables();
+   string gvName = GVPrefix + "1LastOrderId";
+   GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
+   gvName = GVPrefix + "2LastOrderId";
+   GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[1].TicketId);
+   
+   OnTick();  // Set up precondition - multipe active trades
+   gvName = GVPrefix + "1LastOrderId";
+   GlobalVariableSet(gvName, 0); //Close second one
+   testBroker.OrdersToReturn[0].OrderClosed = TimeCurrent();
+   gvName = GVPrefix + "2LastOrderId";
+   GlobalVariableSet(gvName, 0); //Close second one
+   testBroker.OrdersToReturn[1].OrderClosed = TimeCurrent();
+   OnTick();   
+   if (!Assert(totalActiveTrades == 0, "Number of open orders is not 0)")) return false;
+   if (!Assert(ArraySize(activeTrades) == 2, "activeOrder array size is not 2")) return false;
+   if (!Assert(activeTrades[0] == NULL, "first active order is not null"))return false;
+   return Assert(activeTrades[1] == NULL, "second active order is not null");
 }
 
 bool ProperlyDetectsNextLevelUp(double currentPrice, double expected)

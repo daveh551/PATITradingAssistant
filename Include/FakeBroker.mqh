@@ -79,6 +79,13 @@ public:
                         newTrade.IsPending = (selectedTrade.OrderType != OP_BUY && selectedTrade.OrderType != OP_SELL);
                         return newTrade;
                     }
+                    virtual void GetClose(Position * trade)
+                    {
+                        SelectOrderByTicket(trade.TicketId);
+                        Position * selectedTrade = OrdersToReturn[OrderIndex[selectedPosition]];
+                        trade.ClosePrice = selectedTrade.ClosePrice;
+                        trade.OrderClosed = selectedTrade.OrderClosed;
+                    }
   };
 //+------------------------------------------------------------------+
 //|                                                                  |

@@ -55,12 +55,12 @@ public:
                     }
                     virtual int GetType(int ticketId)
                     {
-                     OrderSelect(ticketId, SELECT_BY_TICKET);
+                     SelectOrderByTicket(ticketId);
                      return OrderType();
                     }
                     virtual void GetClose(Position * trade)
                     {
-                     OrderSelect(trade.TicketId, SELECT_BY_TICKET);
+                     SelectOrderByTicket(trade.TicketId);
                      trade.ClosePrice = OrderClosePrice();
                      trade.OrderClosed = OrderCloseTime();
                     }

@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.32"
+#property version   "000.320"
 #property strict
 
 #include <stdlib.mqh>
@@ -176,37 +176,6 @@ void OnTick()
    CheckForClosedTrades();
    CheckForPendingTradesGoneActive();
    CheckForNewTrades();
-//   while(true)
-//   {
-// 
-//      string gvName = MakeGVname(seqNo);
-//      if (GlobalVariableCheck(gvName))
-//      {
-//         lastTradeId = (int) GlobalVariableGet(gvName);
-//         {  
-//            //if (lastTradeId == 0 || lastTradePending)
-//            if (CheckForNewTrade(lastTradeId))
-//            {
-//               //if(CheckForNewTrade(gvName))
-//               //{
-//                  HandleNewEntry();
-//               //}
-//            }
-//            else
-//            {
-//               if(CheckForClosedTrade(gvName))
-//               {
-//                  HandleClosedTrade(gvName);
-//               }
-//            }
-//         seqNo++;
-//      }
-//      }
-//      else
-//      {
-//         break;
-//      }
-//   }
   }
 //+------------------------------------------------------------------+
 //| Timer function                                                   |
@@ -328,9 +297,12 @@ void Initialize()
   endOfDay = StructToTime(dtStruct) +(24*60*60) + (_endOfDayOffsetHours * 60 * 60);
   longTradeNumberForDay = 0;
   shortTradeNumberForDay = 0;
-  ReadOldTrades();
+  if (CheckSaveFileValid())
+   ReadOldTrades();
+  else
+   DeleteSaveFile();
   lastTradeId = 0;
-  CheckForNewTrade("");
+ 
   
 
 }
@@ -552,14 +524,27 @@ void PrintConfigValues()
 
    void CheckForClosedTrades()
    {
+      int currentlyActiveTradeIds[];
+      bool foundAClosedTrade = false;
+      int maxSeqNo = 0;
+      int maxActiveTrade = 0;
       int seqNo = 1;
+      ArrayResize(currentlyActiveTradeIds, 0, 10);
+      int tradeId;
       while (true)
       {
+         //We're going to (maybe) cycle through the global variables twice
+         // - once to build a list of those that remain
+         // - and the second time to find those that have been deleted.
+         // If none of the GV's are 0, then we can skip this whole thing
+         
          string gvName = GVPrefix + IntegerToString(seqNo) + "LastOrderId";
          if (!GlobalVariableCheck(gvName)) break;
-         int tradeId = (int) GlobalVariableGet(gvName);
+         tradeId = (int) GlobalVariableGet(gvName);
          if (tradeId == 0)
          {
+            foundAClosedTrade = true;
+            
             //Now we have to find which trade was closed.
             //For efficiency, let's do a quick hack and check for only one trade - 
             // which will cover 90% of the cases.
@@ -567,17 +552,41 @@ void PrintConfigValues()
             {
                lastTradeId = activeTrades[0].TicketId;
                activeTrade = activeTrades[0];
-               HandleClosedTrade();
-               if (CheckPointer(activeTrades[0]) == POINTER_DYNAMIC) delete activeTrades[0];
-               activeTrades[0] = NULL;
-               totalActiveTrades = 0;
+               if(!activeTrade.IsPending)
+                  HandleClosedTrade();
+               else
+                  HandleDeletedTrade();
             }
-            for(int ix=0;ix<totalActiveTrades;ix++)
-              {
-                 
-              }        
+         }
+         else
+         {
+            maxSeqNo = seqNo;
+            ArrayResize(currentlyActiveTradeIds, ++maxActiveTrade, 10);
+            currentlyActiveTradeIds[maxActiveTrade - 1] = tradeId;
          }
          seqNo++;
+      }
+      if (foundAClosedTrade) 
+      {
+           //Now any Ids that are in activeTrades not in currentlyActiveTrades are deleted
+           for(int ix=totalActiveTrades-1;ix >= 0;ix--)
+           {
+               bool foundThisTrade = false;
+              tradeId = activeTrades[ix].TicketId;
+              for(int jx=0;jx<maxActiveTrade;jx++)
+                {
+                  if (currentlyActiveTradeIds[jx] == tradeId)
+                  {
+                     foundThisTrade = true;
+                     break;
+                  }
+                }
+              if (!foundThisTrade)
+              {
+                  activeTrade = activeTrades[ix];
+                  HandleClosedTrade();
+              }
+           }           
       }
    }
    
@@ -593,7 +602,7 @@ void PrintConfigValues()
          {
             for(int ix=0;ix<totalActiveTrades;ix++)
               {
-                  if (activeTrades[ix].TicketId == tradeId)
+                  if (activeTrades[ix] !=NULL &&activeTrades[ix].TicketId == tradeId)
                   {
                      if (activeTrades[ix].IsPending)
                      {
@@ -641,43 +650,6 @@ bool CheckForNewTrade(int tradeId)
      }
    return true;
 }
-//bool CheckForNewTrade(string globalVariableName)
-//{
-//   if (lastTradePending)
-//   {
-//      if (GetNewTradeId() == 0)
-//         {
-//            lastTradePending = false;
-//            lastTradeId = 0;
-//            return false;
-//         }
-//      int orderType = broker.GetType(lastTradeId);
-//      if (orderType == OP_BUY || orderType == OP_SELL)
-//        {
-//            lastTradePending = false;
-//            return true;
-//        }
-//      return false;
-//   }
-//   lastTradeId = GetNewTradeId();
-//   if (lastTradeId == 0) return false;
-//   activeTrade = broker.GetTrade(lastTradeId);
-//   int orderType = activeTrade.OrderType;
-//   if (orderType == OP_BUY || orderType == OP_SELL) 
-//   {
-//      lastTradePending = false;
-//      return true;
-//   }
-//   lastTradePending = true;
-//   return false;
-//}
-
-//int GetNewTradeId()
-//{
-//   double id;
-//   //GlobalVariableGet(globalLastTradeName, id);
-//   return ((int) id);
-//}
 
 void HandleNewEntry( int tradeId, bool savedTrade = false)
 {
@@ -749,17 +721,6 @@ void HandleTradeEntry(bool wasPending, bool savedTrade = false)
       broker.SetSLandTP(activeTrade);
    }    
 }
-//bool CheckForClosedTrade(string globalVariableName)
-//{
-//    oldTradeId = lastTradeId;
-//   lastTradeId = GetNewTradeId();
-//   if(lastTradeId == 0)
-//   {
-//      return true;
-//   }
-//   return false;
-//
-//}
 
 void HandleClosedTrade(bool savedTrade = false)
 {
@@ -876,13 +837,32 @@ void HandleClosedTrade(bool savedTrade = false)
                }
            }
       }
-      if (CheckPointer(activeTrade) == POINTER_DYNAMIC)
-         delete activeTrade;
+      HandleDeletedTrade();
    }
    activeTrade = NULL;
    
 }
+void HandleDeletedTrade()
+{
+         for(int ix=0;ix<totalActiveTrades;ix++)
+        {
+         if (activeTrades[ix].TicketId == activeTrade.TicketId)
+         {
+            if (CheckPointer(activeTrades[ix]) == POINTER_DYNAMIC)
+               delete activeTrades[ix];
+            for(int jx=ix;jx<totalActiveTrades-1;jx++)
+              {
+               activeTrades[jx] = activeTrades[jx+1];
+              }
+            activeTrades[totalActiveTrades-1] = NULL;
+            totalActiveTrades--;
+         }
+        }
+      if (CheckPointer(activeTrade) == POINTER_DYNAMIC)
+         delete activeTrade;
+      activeTrade = NULL;
 
+}
 int CalculateStop(string symbol)
 {
    int stop = _defaultStopPips;
@@ -942,15 +922,37 @@ double GetNextLevel(double currentLevel, int direction /* 1 = UP, -1 = down */)
       
 }
 
+bool CheckSaveFileValid()
+{
+   int fileHandle = FileOpen(saveFileName, FILE_ANSI | FILE_TXT | FILE_READ);
+   if (fileHandle != -1)
+   {
+      string line = FileReadString(fileHandle);
+      if (line == StringFormat("DataVersion: %i", DFVersion)) // versions match
+      {
+         line = FileReadString(fileHandle);
+         StringReplace(line, "Server Trade Date: ", "");
+         datetime day = StrToTime(line); 
+         FileClose(fileHandle);
+         if (day == GetDate(TimeCurrent())) return true;
+         else return false;
+      }
+   }
+   return false;
+}
 void CleanupEndOfDay()
 {
-   if (FileIsExist(saveFileName))
-      FileDelete(saveFileName);
+   DeleteSaveFile();
    DeleteAllObjects();
    // Replace the version legend
    DrawVersion();
 }
 
+void DeleteSaveFile()
+{
+   if (FileIsExist(saveFileName))
+      FileDelete(saveFileName);
+}
 void SaveTradeToFile()
 {
    int fileHandle = FileOpen(saveFileName, FILE_TXT | FILE_ANSI | FILE_WRITE | FILE_READ);
