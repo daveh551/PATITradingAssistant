@@ -108,11 +108,18 @@ void RunTests()
       ++testsPassed;
    totalTests++;
    CleanUpTestTrades();
-   
    if (CanDetectMultipleActiveTradesWithAllTradesBeingClosed())
       ++testsPassed;
    totalTests++;
    CleanUpTestTrades();
+   if (DetectingDeletedPendingOrderDoesNotInvokeClosedTradeProcessing())
+      ++testsPassed;
+   totalTests++;
+   CleanUpTestTrades();   
+   if (HandlingContinuingActiveTradeDoesNotInvokeClosedTradeProcessing())
+      ++testsPassed;
+   totalTests++;
+   CleanUpTestTrades();   
    
    double nextLevelTestValues[] = {110.80,110.00, 110.01, 110.05, 110.10, 110.19, 110.20, 110.21, 110.25, 110.39, 110.40,
       110.49, 110.50, 110.51, 110.60, 110.70, 110.799, 110.80, 110.801, 110.90, 110.999, 111,
@@ -360,11 +367,12 @@ bool CanDetectFirstPendingTradeNowActiveFromAmongMultipleTrades()
    
    OnTick();  // Set precondition of multiple pending orders
    testBroker.OrdersToReturn[0].OrderType = OP_BUY;
+   DeleteAllObjects();
    OnTick();
    if (!Assert(totalActiveTrades == 2, "Number of Active Orders is not 2")) return false;
    if (!Assert(activeTrades[0].IsPending == false, "IsPending for first trade is set")) return false;
-   return (Assert(activeTrades[1].IsPending, "IsPending for first trade is not set"));
-   
+   if (!Assert(activeTrades[1].IsPending, "IsPending for first trade is not set")) return false;
+   return Assert(!EntryArrowDoesNotExist(Prefix+"Entry"), "Entry arrow not created for pending order gone active");
 }
 //Scenario 10a
       // 10. Multiple pending trades previously, 1 trade now active
@@ -511,6 +519,74 @@ bool CanDetectMultipleActiveTradesWithAllTradesBeingClosed()
    return Assert(activeTrades[1] == NULL, "second active order is not null");
 }
 
+bool DetectingNewPendingOrderDoesNotInvokeNewTradeProcessing()
+{
+   Print ("Beginning DetectingNewPendingOrderDoesNotInvokeNewTradeProcessing");
+   FakeBroker *testBroker = broker;
+   InitializeActiveTradeArray();
+   ClearGlobalVariables();
+   string gvName = GVPrefix + "1LastOrderId";
+   GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
+   testBroker.OrdersToReturn[0].OrderType = OP_SELLLIMIT;
+
+   DeleteAllObjects();
+   OnTick();
+   return Assert(EntryArrowDoesNotExist(Prefix+"Entry"), "Trade Entry was called for pending order");
+}
+
+bool DetectingDeletedPendingOrderDoesNotInvokeClosedTradeProcessing()
+{
+   Print ("Beginning DetectingDeletedPendingOrderDoesNotInvokeClosedTradeProcessing");
+   FakeBroker *testBroker = broker;
+   InitializeActiveTradeArray();
+   ClearGlobalVariables();
+   string gvName = GVPrefix + "1LastOrderId";
+   GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
+   testBroker.OrdersToReturn[0].OrderType = OP_SELLLIMIT;
+   gvName = GVPrefix + "2LastOrderId";
+   GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[1].TicketId);
+   testBroker.OrdersToReturn[1].OrderType = OP_SELLLIMIT;
+
+   OnTick();
+   GlobalVariableSet(gvName, 0);  //Close the pending order
+   DeleteAllObjects();
+   OnTick();
+   return Assert(EntryArrowDoesNotExist(Prefix+"Exit"), "Old Trade Closed was called for deleted pending order");
+}
+
+bool HandlingContinuingActiveTradeDoesNotInvokeClosedTradeProcessing()
+{
+   Print ("Beginning HandlingContinuingActiveTradeDoesNotInvokeClosedTradeProcessing");
+   FakeBroker *testBroker = broker;
+   InitializeActiveTradeArray();
+   ClearGlobalVariables();
+   string gvName = GVPrefix + "1LastOrderId";
+   GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
+   testBroker.OrdersToReturn[0].OrderType = OP_SELLLIMIT;
+   gvName = GVPrefix + "2LastOrderId";
+   GlobalVariableSet(gvName, 0);
+   //testBroker.OrdersToReturn[1].OrderType = OP_SELLLIMIT;
+
+   OnTick();
+   testBroker.OrdersToReturn[0].OrderType  = OP_SELL;
+   DeleteAllObjects();
+   OnTick();
+   return Assert(EntryArrowDoesNotExist(Prefix+"Exit"), "Exit arrow was created for continuing active trade");
+}
+bool EntryArrowDoesNotExist(string objectNameToMatch)
+{
+ 
+   bool foundArrow = false;
+   for(int ix=0;ix<ObjectsTotal(OBJ_ARROW);ix++)
+     {
+       if (StringSubstr(ObjectName(ix), 0, StringLen(objectNameToMatch)) == objectNameToMatch)
+       {
+         foundArrow = true;
+         break;
+       }
+     }
+   return !foundArrow;
+}
 bool ProperlyDetectsNextLevelUp(double currentPrice, double expected)
 {
    double nextLevel = GetNextLevel(currentPrice, 1);

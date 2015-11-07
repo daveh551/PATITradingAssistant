@@ -16,6 +16,7 @@ class FakeBroker : public Broker
 private:
          int cntGetNumberOfOrders;
          int cntGetPosition;
+         
          int selectedPosition;
 public:
                      FakeBroker();

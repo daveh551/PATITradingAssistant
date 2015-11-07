@@ -96,7 +96,7 @@ void OnTimer()
          ArrayCopy(existingOrderId, trades);
          for (int i = 0; i < openOrdersThisTime; i++)
          {
-            broker.SelectOrder(i);
+            broker.SelectOrderByPosition(i);
             Position * selectTrade = broker.GetPosition();
             //Does this trade already exist?
             Position * trade = FindOpenTrade(selectTrade.TicketId);
@@ -124,6 +124,7 @@ void OnTimer()
             {
                Position * closedTrade = existingOrderId[j];
                string closedTradeGlobal = FindGVname(closedTrade.Symbol, closedTrade.TicketId);
+               Print ("Setting Global Variable " + closedTradeGlobal + " to 0 in OnTimer");
                GlobalVariableSet(closedTradeGlobal, 0);
                RemoveClosedTrade(closedTrade);
                if (CheckPointer(closedTrade) == POINTER_DYNAMIC)
@@ -184,6 +185,7 @@ void ZeroGlobalVariables()
          string gvName = GlobalVariableName(ix);
          if (StringSubstr(gvName, 0, StringLen(Prefix)) == Prefix && StringFind(gvName, "LastOrderId") != -1)
          {
+            Print ("Setting Global Variable " + gvName + " to zero in ZeroGlobalVariables");
             GlobalVariableSet(gvName, 0);
          }
      }
@@ -229,6 +231,7 @@ void AddTrade(Position * newTrade)
    ArrayResize(trades, arrayLen+1, TRADESRESERVESIZE);
    trades[arrayLen] = newTrade;
    string gvName = AddGVname(newTrade.Symbol, newTrade.TicketId);
+   Print ("Setting GlobalVariable " + gvName + " to " + IntegerToString(newTrade.TicketId) + " in AddTrade");
    GlobalVariableSet(gvName, (double) newTrade.TicketId);
 }
 
@@ -242,6 +245,7 @@ string AddGVname(string symbol, int ticketId)
       {
          if (GlobalVariableGet(gvName) == 0)
          {
+            Print ("Setting GlobalVariale " + gvName + " to " + IntegerToString(seqNo) + " in AddGname");
             GlobalVariableSet(gvName, (double) seqNo);
             return (gvName);
          }
@@ -258,6 +262,7 @@ string AddGVname(string symbol, int ticketId)
       else
       {
          // Make a new global variable
+         Print ("Setting GlobalVariable " + gvName + " to " + IntegerToString(ticketId) + " in AddGVname");
          GlobalVariableSet(gvName, (double) ticketId);
          return gvName;
       }

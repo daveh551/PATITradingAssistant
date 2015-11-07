@@ -95,7 +95,6 @@ string configFileName;
 string globalConfigFileName;
 datetime lastUpdateTime;
 int lastTradeId = 0;
-int oldTradeId = 0;
 bool lastTradePending = false;
 double stopLoss;
 double noEntryPad;
@@ -544,19 +543,6 @@ void PrintConfigValues()
          if (tradeId == 0)
          {
             foundAClosedTrade = true;
-            
-            //Now we have to find which trade was closed.
-            //For efficiency, let's do a quick hack and check for only one trade - 
-            // which will cover 90% of the cases.
-            if(totalActiveTrades == 1)
-            {
-               lastTradeId = activeTrades[0].TicketId;
-               activeTrade = activeTrades[0];
-               if(!activeTrade.IsPending)
-                  HandleClosedTrade();
-               else
-                  HandleDeletedTrade();
-            }
          }
          else
          {
@@ -584,7 +570,10 @@ void PrintConfigValues()
               if (!foundThisTrade)
               {
                   activeTrade = activeTrades[ix];
-                  HandleClosedTrade();
+                  if (!activeTrade.IsPending)
+                     HandleClosedTrade();
+                  else
+                     HandleDeletedTrade();
               }
            }           
       }
@@ -662,19 +651,8 @@ void HandleNewEntry( int tradeId, bool savedTrade = false)
    activeTrade = activeTrades[totalActiveTrades -1];
    lastTradeId = tradeId;
    lastTradePending = activeTrade.IsPending;
-   if (!savedTrade)
-   {
-      if(_alertOnTrade)
-        {
-            Alert("New Trade Entered for " + normalizedSymbol + ". Id = " + IntegerToString(lastTradeId) +". OpenPrice = " + DoubleToStr(activeTrade.OpenPrice, 5));
-         
-        }
-      SaveTradeToFile();
-   }
-   
+   if (activeTrade.IsPending) return;
    HandleTradeEntry(false, savedTrade);
-
-
 }
 
 void HandlePendingTradeGoneActive()
@@ -683,6 +661,12 @@ void HandlePendingTradeGoneActive()
 }
 void HandleTradeEntry(bool wasPending, bool savedTrade = false)
 {
+      if(!savedTrade &&  !activeTrade.IsPending)
+        {
+         if (_alertOnTrade)
+            Alert("New Trade Entered for " + normalizedSymbol + ". Id = " + IntegerToString(lastTradeId) +". OpenPrice = " + DoubleToStr(activeTrade.OpenPrice, 5));
+         SaveTradeToFile();
+        }
    string objectName = Prefix + "Entry";
    if (activeTrade.OrderType == OP_BUY)
    {
@@ -707,7 +691,7 @@ void HandleTradeEntry(bool wasPending, bool savedTrade = false)
    }
    if (DEBUG_ENTRY)
    {
-      Print("Setting TakeProfit targe at " + DoubleToStr(activeTrade.TakeProfitPrice, Digits));
+      Print("Setting TakeProfit target at " + DoubleToStr(activeTrade.TakeProfitPrice, Digits));
    }
    if (_showInitialStop)
    {
@@ -730,7 +714,7 @@ void HandleClosedTrade(bool savedTrade = false)
       {
          if(_alertOnTrade)
            {
-               Alert("Old Trade " + IntegerToString(oldTradeId) + " closed. INVALID POINTER for activeTrade");      
+               Alert("Old Trade "  + " closed. INVALID POINTER for activeTrade");      
            }
       }
    }
@@ -745,7 +729,7 @@ void HandleClosedTrade(bool savedTrade = false)
          if (FiveDig) profit *= .1;
          if(_alertOnTrade)
            {
-               Alert("Old Trade " + IntegerToString(oldTradeId) + " (", + activeTrade.Symbol +") closed. (" + DoubleToStr(profit, 1) + ")");            
+               Alert("Old Trade " + IntegerToString(activeTrade.TicketId) + " (", + activeTrade.Symbol +") closed. (" + DoubleToStr(profit, 1) + ")");            
            }
    
          Print("Handling closed trade.  OrderType= " + IntegerToString(activeTrade.OrderType));
