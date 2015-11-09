@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "000.320"
+#property version   "0.33"
 #property strict
 
 #include <stdlib.mqh>
@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.32";
+string Version="v0.33";
 string NTIPrefix = "NTI_";
 int DFVersion = 1;
 
@@ -56,6 +56,8 @@ extern color LosingExitColor = Red;
 extern color TradeTrendLineColor = Blue;
 extern bool SaveConfiguration = false;
 extern int EndOfDayOffsetHours = 0;
+extern bool SetLimitsOnPendingOrders = true;
+extern bool AdjustStopOnTriggeredPendingOrders = true;
 
 const double GVUNINIT = -99999999;
 const string LASTUPDATENAME = "NTI_LastUpdateTime";
@@ -82,6 +84,8 @@ bool _sendSLandTPToBroker;
 bool _showEntry;
 bool _alertOnTrade;
 int _endOfDayOffsetHours;
+bool _setLimitsOnPendingOrders;
+bool _adjustStopOnTriggeredPendingOrders;
 
 bool alertedThisBar = false;
 datetime time0;
@@ -342,6 +346,8 @@ void CopyInitialConfigVariables()
    _showEntry = ShowEntry;
    _alertOnTrade = AlertOnTrade;
    _endOfDayOffsetHours = EndOfDayOffsetHours;
+   _setLimitsOnPendingOrders = SetLimitsOnPendingOrders;
+   _adjustStopOnTriggeredPendingOrders = AdjustStopOnTriggeredPendingOrders;
 
 }
 
@@ -454,9 +460,17 @@ void ApplyConfiguration(string fileName)
                 {
                   _alertOnTrade = (bool) StringToInteger(value);
                 }
-         else if (var = "EndOfDayOffsetHours")
+         else if (var == "EndOfDayOffsetHours")
                {
                   _endOfDayOffsetHours = StringToInteger(value);
+               }
+         else if (var == "SetLimitsOnPendingOrder")
+               {
+                  _setLimitsOnPendingOrders = (bool) StringToInteger(value);
+               }
+         else if (var == "AdjustStopOnTriggeredPendingOrders")
+               {
+                  _adjustStopOnTriggeredPendingOrders = (bool) StringToInteger(value);
                }
         }
      }
@@ -491,6 +505,8 @@ void SaveConfigurationFile()
    FileWriteString(fileHandle, "ShowEntry: " + IntegerToString((int) _showEntry) + "\r\n");
    FileWriteString(fileHandle, "AlertOnTrade: " + IntegerToString((int) _alertOnTrade) + "\r\n");
    FileWriteString(fileHandle, "EndOfDayOffsetHours: " + IntegerToString(_endOfDayOffsetHours) + "\r\n");
+   FileWriteString(fileHandle, "SetLimitsOnPendingOrders: " + IntegerToString((int) _setLimitsOnPendingOrders) + "\r\n");
+   FileWriteString(fileHandle, "AdjustStopOnTriggeredPendingOrders: " + IntegerToString((int) _adjustStopOnTriggeredPendingOrders) + "\r\n");
 
 
    
@@ -519,6 +535,8 @@ void PrintConfigValues()
    Print( "ShowEntry: " + IntegerToString((int) _showEntry) + "\r\n");
    Print( "AlertOnTrade: " + IntegerToString((int) _alertOnTrade) + "\r\n");
    Print( "EndOfDayOffsetHours: " + IntegerToString(_endOfDayOffsetHours) + "\r\n");
+   Print("SetLimitsOnPendingOrders: " + IntegerToString((int) _setLimitsOnPendingOrders) + "\r\n");
+   Print("AdjustStopOnTriggeredPendingOrders: " + IntegerToString((int) _adjustStopOnTriggeredPendingOrders) + "\r\n");
 }
 
    void CheckForClosedTrades()
@@ -651,7 +669,12 @@ void HandleNewEntry( int tradeId, bool savedTrade = false)
    activeTrade = activeTrades[totalActiveTrades -1];
    lastTradeId = tradeId;
    lastTradePending = activeTrade.IsPending;
-   if (activeTrade.IsPending) return;
+   if (activeTrade.IsPending)
+   {
+      if(_setLimitsOnPendingOrders)
+         SetStopAndProfitLevels(activeTrade, false);
+      return;
+   }
    HandleTradeEntry(false, savedTrade);
 }
 
@@ -668,19 +691,13 @@ void HandleTradeEntry(bool wasPending, bool savedTrade = false)
          SaveTradeToFile();
         }
    string objectName = Prefix + "Entry";
+   if (!savedTrade) SetStopAndProfitLevels(activeTrade, wasPending);
    if (activeTrade.OrderType == OP_BUY)
    {
-      if (activeTrade.StopPrice == 0) activeTrade.StopPrice = activeTrade.OpenPrice - stopLoss;
-      if (_useNextLevelTPRule)
-         if (activeTrade.TakeProfitPrice == 0) activeTrade.TakeProfitPrice = GetNextLevel(activeTrade.OpenPrice + _minRewardRatio*stopLoss, 1);
       objectName = objectName + "L" + IntegerToString(++longTradeNumberForDay);
    }  
    else
    {
-      if (activeTrade.StopPrice ==0 )activeTrade.StopPrice = activeTrade.OpenPrice + stopLoss;
-      if (_useNextLevelTPRule)
-         if (activeTrade.TakeProfitPrice == 0) activeTrade.TakeProfitPrice = GetNextLevel(activeTrade.OpenPrice-_minRewardRatio*stopLoss, -1);
-    
       objectName = objectName + "S" + IntegerToString(++shortTradeNumberForDay);
    }
    if (_showEntry)
@@ -700,12 +717,29 @@ void HandleTradeEntry(bool wasPending, bool savedTrade = false)
       ObjectSetInteger(0, objectName, OBJPROP_ARROWCODE, 4);
       ObjectSetInteger(0, objectName, OBJPROP_COLOR, Red);
    }
-   if (_sendSLandTPToBroker && !savedTrade && !_testing)
-   {
-      broker.SetSLandTP(activeTrade);
-   }    
 }
 
+void SetStopAndProfitLevels(Position * trade, bool wasPending)
+{
+      if //(trade.OrderType == OP_BUY || trade.OrderType == OP_BUYLIMIT || trade.OrderType == OP_BUYSTOP))
+         (trade.OrderType & 0x01 == 0)  // All BUY order types are even
+      {
+         if (trade.StopPrice == 0 || (wasPending && _adjustStopOnTriggeredPendingOrders)) trade.StopPrice = trade.OpenPrice - stopLoss;
+         if (_useNextLevelTPRule)
+            if (trade.TakeProfitPrice == 0) trade.TakeProfitPrice = GetNextLevel(trade.OpenPrice + _minRewardRatio*stopLoss, 1);
+      }
+      else //SELL type
+      {
+         if (trade.StopPrice ==0 ||(wasPending && _adjustStopOnTriggeredPendingOrders ) )trade.StopPrice = trade.OpenPrice + stopLoss;
+         if (_useNextLevelTPRule)
+            if (trade.TakeProfitPrice == 0) trade.TakeProfitPrice = GetNextLevel(trade.OpenPrice-_minRewardRatio*stopLoss, -1);
+      }
+      if (_sendSLandTPToBroker && !_testing)
+      {
+         broker.SetSLandTP(trade);
+      }    
+
+}
 void HandleClosedTrade(bool savedTrade = false)
 {
    if(CheckPointer(activeTrade) == POINTER_INVALID)
