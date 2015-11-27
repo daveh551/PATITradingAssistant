@@ -669,7 +669,7 @@ void HandleNewEntry( int tradeId, bool savedTrade = false)
    activeTrade = activeTrades[totalActiveTrades -1];
    lastTradeId = tradeId;
    lastTradePending = activeTrade.IsPending;
-   if (activeTrade.IsPending)
+   if (activeTrade.IsPending && !savedTrade)
    {
       if (DEBUG_ENTRY)
       {
@@ -737,7 +737,7 @@ void SetStopAndProfitLevels(Position * trade, bool wasPending)
             Print ("Setting stoploss for BUY order (" + IntegerToString(trade.OrderType) +") StopLoss= " + DoubleToStr(trade.StopPrice, 5) + "(OpenPrice = " + DoubleToStr(trade.OpenPrice, 5) + ", stopLoss = " + DoubleToStr(stopLoss, 8));
          }
          if (_useNextLevelTPRule)
-            if (trade.TakeProfitPrice == 0) trade.TakeProfitPrice = GetNextLevel(trade.OpenPrice + _minRewardRatio*stopLoss, 1);
+            if (trade.TakeProfitPrice == 0 || (wasPending && _adjustStopOnTriggeredPendingOrders)) trade.TakeProfitPrice = GetNextLevel(trade.OpenPrice + _minRewardRatio*stopLoss, 1);
       }
       else //SELL type
       {
@@ -748,7 +748,7 @@ void SetStopAndProfitLevels(Position * trade, bool wasPending)
          }
          
          if (_useNextLevelTPRule)
-            if (trade.TakeProfitPrice == 0) trade.TakeProfitPrice = GetNextLevel(trade.OpenPrice-_minRewardRatio*stopLoss, -1);
+            if (trade.TakeProfitPrice == 0 || (wasPending && _adjustStopOnTriggeredPendingOrders)) trade.TakeProfitPrice = GetNextLevel(trade.OpenPrice-_minRewardRatio*stopLoss, -1);
       }
       if (_sendSLandTPToBroker && !_testing)
       {

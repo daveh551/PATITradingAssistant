@@ -66,6 +66,13 @@ public:
                     }
                     virtual void SetSLandTP(Position *trade)
                     {
+                     SelectOrderByTicket(trade.TicketId);
+                     if ((trade.StopPrice == OrderStopLoss()) &&
+                        trade.TakeProfitPrice == OrderTakeProfit())
+                     {
+                        Print(trade.Symbol + ": Not sending order to broker because SL and TP already set");
+                        return;
+                     }
                      if (!OrderModifyReliable(trade.TicketId,
                         trade.OpenPrice,
                         trade.StopPrice,
