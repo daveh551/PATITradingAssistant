@@ -693,8 +693,8 @@ void HandleTradeEntry(bool wasPending, bool savedTrade = false)
       if(!savedTrade &&  !activeTrade.IsPending)
         {
          if (_alertOnTrade)
-            Alert("New Trade Entered for " + normalizedSymbol + ". Id = " + IntegerToString(lastTradeId) +". OpenPrice = " + DoubleToStr(activeTrade.OpenPrice, 5));
-         SaveTradeToFile();
+            Alert("New Trade Entered for " + normalizedSymbol + ". Id = " + IntegerToString(activeTrade.TicketId) +". OpenPrice = " + DoubleToStr(activeTrade.OpenPrice, 5));
+         SaveTradeToFile(activeTrade);
         }
    string objectName = Prefix + "Entry";
    if (!savedTrade) SetStopAndProfitLevels(activeTrade, wasPending);
@@ -995,7 +995,7 @@ void DeleteSaveFile()
    if (FileIsExist(saveFileName))
       FileDelete(saveFileName);
 }
-void SaveTradeToFile()
+void SaveTradeToFile(Position *trade)
 {
    int fileHandle = FileOpen(saveFileName, FILE_TXT | FILE_ANSI | FILE_WRITE | FILE_READ);
    if (fileHandle != -1)
@@ -1007,7 +1007,7 @@ void SaveTradeToFile()
          FileWriteString(fileHandle,StringFormat("DataVersion: %i\r\n", DFVersion));
          FileWriteString(fileHandle, StringFormat("Server Trade Date: %s\r\n", TimeToString(TimeCurrent(), TIME_DATE)));
       }
-      FileWriteString(fileHandle, StringFormat("Trade ID: %i\r\n", lastTradeId));
+      FileWriteString(fileHandle, StringFormat("Trade ID: %i\r\n", trade.TicketId));
       FileClose(fileHandle);
    }
 }
