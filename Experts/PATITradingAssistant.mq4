@@ -787,7 +787,7 @@ void HandleClosedTrade(bool savedTrade = false)
          if (FiveDig) profit *= .1;
          if(_alertOnTrade)
            {
-               Alert("Old Trade " + IntegerToString(activeTrade.TicketId) + " (", + activeTrade.Symbol +") closed. (" + DoubleToStr(profit, 1) + ")");            
+               Alert("Old Trade " + IntegerToString(activeTrade.TicketId) + " (" + activeTrade.Symbol +") closed. (" + DoubleToStr(profit, 1) + ")");            
            }
    
          Print("Handling closed trade.  OrderType= " + IntegerToString(activeTrade.OrderType));
