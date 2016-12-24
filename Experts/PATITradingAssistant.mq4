@@ -660,8 +660,6 @@ bool CheckForNewTrade(int tradeId)
 
 void HandleNewEntry( int tradeId, bool savedTrade = false)
 {
-   // don't want to delete activeTrade anymore since it's only a copy of the main pointer
-   //if (CheckPointer(activeTrade) == POINTER_DYNAMIC) delete activeTrade;
    totalActiveTrades++;
    if (totalActiveTrades > ArraySize(activeTrades))
       ArrayResize(activeTrades, totalActiveTrades, 10);
