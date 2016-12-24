@@ -136,7 +136,7 @@ There are numerous configuration variable for the Trading Assistant in order to 
 
 In my use, PATI Trading Assistant (PTA) has worked exactly as expected 99% of the time. However, there are a couple limitations that you need to understand to avoid some surprises.
 
-~~ The first is that the New Trade Indicator (NTI), which feeds the trade data into PTA, can only track one open trade per pair at a time, including pending orders. If you have a pending order for a pair, and then decide to enter an order manually before cancelling the pending order, then the new order won't be seen, and PTA won't act on it. ~~  [This limitation has been removed in version 0.32 and later of NTI]
+~~The first is that the New Trade Indicator (NTI), which feeds the trade data into PTA, can only track one open trade per pair at a time, including pending orders. If you have a pending order for a pair, and then decide to enter an order manually before cancelling the pending order, then the new order won't be seen, and PTA won't act on it.~~  [This limitation has been removed in version 0.32 and later of NTI]
 
 
 ~~This happens to me occasionally when I get caught up in responding to a sudden change.~~ If NTI should fail to recognize an order for some reason,   there is a way to tell PTA about the trade manually.  NTI communicates trades to PTA through MT4 Global Variables, which are accessible using the Tools -> Global Variables menu of the MT4 platform. Follow this procedure:
