@@ -17,6 +17,8 @@ class Broker
   {
 private:
    int startingPos;
+   string symbolPrefix;
+   string symbolSuffix;
 public:
                      Broker(int symbolOffset = 0);
                     ~Broker();
@@ -51,6 +53,7 @@ public:
                         newTrade.OrderClosed = OrderCloseTime();
                         newTrade.StopPrice = OrderStopLoss();
                         newTrade.TakeProfitPrice = OrderTakeProfit();
+                        newTrade.LotSize = OrderLots();
                         return newTrade;
                     }
                     virtual int GetType(int ticketId)
@@ -82,6 +85,47 @@ public:
                            Alert("Setting SL and TP for " + trade.Symbol + " failed.");
                         }
                     }
+                    
+                    virtual void CreateOrder (Position * trade)
+                    {
+                        if (trade.LotSize == 0.0)
+                          {
+                           Alert("Trade with zero lot size cannot be entered.");
+                           return;
+                          }
+                        OrderSendReliable(
+                           symbolPrefix + trade.Symbol + symbolSuffix, 
+                           trade.OrderType,
+                           trade.LotSize,
+                           trade.OpenPrice,
+                           0,
+                           0.0,
+                           0.0,
+                           "",
+                           0);
+                           
+                    }
+                    
+                    virtual void DeletePendingTrade ( Position * trade)
+                    {
+                        if(trade.OrderType < 2) // then not a pending order
+                          {
+                           Alert("Attempt to delete an open trade. Close order instead of Deleting it.");
+                           return;
+                          }
+                        OrderDelete(trade.TicketId);
+                    }
+                    virtual Position * FindLastTrade()
+                    {
+                        for(int ix=OrdersHistoryTotal()-1;ix>=0;ix--)
+                          {
+                              OrderSelect(ix, SELECT_BY_POS, MODE_HISTORY); 
+                              if(OrderSymbol() == Symbol()) return GetPosition();
+                               
+                          }
+                          return NULL;
+                    }
+            
  string NormalizeSymbol(string symbol)
 {
    return (StringSubstr(symbol, startingPos, 6));
@@ -95,6 +139,12 @@ Broker::Broker(int symbolOffset = 0)
   {
    TypeName = "RealBroker";
    startingPos = symbolOffset;
+   string symbol = Symbol();
+   if (symbolOffset == 0)
+      symbolPrefix = "";
+   else
+      symbolPrefix = StringSubstr(symbol, 0, symbolOffset);
+   symbolSuffix = StringSubstr(symbol,6+symbolOffset);
   }
 //+------------------------------------------------------------------+
 //|                                                                  |

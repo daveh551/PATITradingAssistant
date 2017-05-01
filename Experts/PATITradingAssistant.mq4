@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.33"
+#property version   "0.34"
 #property strict
 
 #include <stdlib.mqh>
@@ -18,9 +18,9 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.33";
+string Version="v0.34RC3";
 string NTIPrefix = "NTI_";
-int DFVersion = 1;
+int DFVersion = 2;
 
 
 string TextFont="Verdana";
@@ -33,7 +33,14 @@ int debug = true;
 #define DEBUG_GLOBAL  ((debug & 0x0002) == 0x0002)
 #define DEBUG_ENTRY ((debug & 0x0004) == 0x0004)
 #define DEBUG_CONFIG ((debug & 0x0008) == 0x0008)
+#define DEBUG_ORDER ((debug & 0x0010) == 0x0010)
+#define DEBUG_OANDA ((debug & 0x0020) == 0x0020)
 bool HeartBeat = true;
+int rngButtonXOffset = 10;
+int rngButtonYOffset = 50;
+int rngButtonHeight = 18;
+int rngButtonWidth = 150;
+string rngButtonName = Prefix + "DrawRangeBtn";
 
 extern bool Testing = false;
 extern int PairOffsetWithinSymbol = 0;
@@ -58,6 +65,15 @@ extern bool SaveConfiguration = false;
 extern int EndOfDayOffsetHours = 0;
 extern bool SetLimitsOnPendingOrders = true;
 extern bool AdjustStopOnTriggeredPendingOrders = true;
+extern int BeginningOfDayOffsetHours = 0;
+extern bool ShowDrawRangeButton = true;
+extern bool SetPendingOrdersOnRanges = false;
+extern bool AccountForSpreadOnPendingBuyOrders = true;
+extern double PendingLotSize = 0.0;
+extern double MarginForPendingRangeOrders = 1.0;
+extern color RangeLinesColor = Yellow;
+extern bool CancelPendingTrades = true;
+
 
 const double GVUNINIT = -99999999;
 const string LASTUPDATENAME = "NTI_LastUpdateTime";
@@ -86,6 +102,15 @@ bool _alertOnTrade;
 int _endOfDayOffsetHours;
 bool _setLimitsOnPendingOrders;
 bool _adjustStopOnTriggeredPendingOrders;
+int _beginningOfDayOffsetHours;
+bool _showDrawRangeButton;
+bool _setPendingOrdersOnRanges;
+bool _accountForSpreadOnPendingBuyOrders;
+double _pendingLotSize;
+double _marginForPendingRangeOrders;
+color _rangeLinesColor;
+bool _cancelPendingTrades;
+
 
 bool alertedThisBar = false;
 datetime time0;
@@ -93,6 +118,7 @@ datetime time0;
 int longTradeNumberForDay = 0;
 int shortTradeNumberForDay =0;
 datetime endOfDay;
+datetime beginningOfDay;
 string normalizedSymbol;
 string saveFileName;
 string configFileName;
@@ -106,6 +132,12 @@ Position * activeTrade = NULL;
 Broker * broker;
 int totalActiveTrades;
 Position * activeTrades[];
+Position * deletedTrades[];
+double dayHi;
+double dayLo;
+
+datetime dayHiTime;
+datetime dayLoTime;
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
@@ -122,6 +154,7 @@ int OnInit()
    UpdateGV();
    CopyInitialConfigVariables();
    InitializeActiveTradeArray();
+   
 
    
 //--- create timer
@@ -147,6 +180,10 @@ void OnDeinit(const int reason)
    //----
    if (reason != REASON_CHARTCHANGE && reason!= REASON_PARAMETERS && reason != REASON_RECOMPILE)
       DeleteAllObjects();
+   for(int ix=totalActiveTrades - 1;ix >=0;ix--)
+     {
+      if (CheckPointer(activeTrades[ix]) == POINTER_DYNAMIC) delete activeTrades[ix];
+     }
    if (CheckPointer(activeTrade) == POINTER_DYNAMIC) delete activeTrade;
    if (CheckPointer(broker) == POINTER_DYNAMIC) delete broker;
    //----
@@ -165,16 +202,37 @@ void OnTick()
       {
          alertedThisBar = false;
          UpdateGV();
+         PrintFormat("Currently %i active trades. ActiveTrades array size = %i", totalActiveTrades, ArraySize(activeTrades));
+         /*
+         for(int ix=0;ix<totalActiveTrades;ix++)
+           {
+            if (CheckPointer(activeTrades[ix]) != POINTER_INVALID)
+            {
+               Position * trade = activeTrades[ix];
+               PrintFormat("ActiveTrade[%i]: ID=%i Type=%i, ClosePrice=%f, Pending=%i, Open = %f,Entered at %s, opened at %s, closed at %s, Stop = %f, takeProfit = %f",
+                  ix, trade.TicketId, trade.OrderType, trade.ClosePrice, trade.IsPending, trade.OpenPrice, TimeToStr(trade.OrderEntered, TIME_MINUTES),
+                  TimeToStr(trade.OrderOpened, TIME_MINUTES), TimeToStr(trade.OrderClosed, TIME_MINUTES), trade.StopPrice, trade.TakeProfitPrice);
+               trade = broker.GetTrade(trade.TicketId);
+               PrintFormat("Broker Trade:          Type=%i, ClosePrice=%f, Pending=%i, Open = %f,Entered at %s, opened at %s, closed at %s, Stop = %f, takeProfit = %f",
+                  trade.OrderType, trade.ClosePrice, trade.IsPending, trade.OpenPrice, TimeToStr(trade.OrderEntered, TIME_MINUTES),
+                  TimeToStr(trade.OrderOpened, TIME_MINUTES), TimeToStr(trade.OrderClosed, TIME_MINUTES), trade.StopPrice, trade.TakeProfitPrice);
+            }
+            
+           }
+       */
+       
          if (Time[0] >= endOfDay)
          {
            endOfDay += 24*60*60;
            CleanupEndOfDay();
+           beginningOfDay += 24*60*60;
          }
       }
       if (!alertedThisBar)
       {
          CheckNTI();
       }
+      
    }
    CheckForClosedTrades();
    CheckForPendingTradesGoneActive();
@@ -193,6 +251,17 @@ void OnTimer()
   {
    return GVPrefix + IntegerToString(sequence) + "LastOrderId";
   }
+  
+void OnChartEvent(const int id, const long& lParam, const double& dParam, const string& sParam)
+{
+   if (id == CHARTEVENT_OBJECT_CLICK)
+   {
+      if (sParam == rngButtonName)
+      {
+         PlotRangeLines();
+      }
+   }
+}
 //+------------------------------------------------------------------+
 void DeleteAllObjects()
    {
@@ -202,7 +271,15 @@ void DeleteAllObjects()
       {
       name=ObjectName(cnt);
       if (StringFind(name,Prefix,0)>-1) 
-         ObjectDelete(name);
+      {
+         if (name == rngButtonName) continue; //don't delete the Draw Range Button
+         ResetLastError();
+         bool success = ObjectDelete(name);
+         if(!success)
+           {
+               Print("Failed to delete object " + name +". Error code = " + GetLastError());
+           }
+      }
       WindowRedraw();
       }
    } //void DeleteAllObjects()
@@ -298,6 +375,7 @@ void Initialize()
   dtStruct.min = 0;
   dtStruct.sec = 0;
   endOfDay = StructToTime(dtStruct) +(24*60*60) + (_endOfDayOffsetHours * 60 * 60);
+  beginningOfDay = StructToTime(dtStruct) + (_beginningOfDayOffsetHours * 60 * 60);
   longTradeNumberForDay = 0;
   shortTradeNumberForDay = 0;
   if (CheckSaveFileValid())
@@ -305,6 +383,11 @@ void Initialize()
   else
    DeleteSaveFile();
   lastTradeId = 0;
+  // Draw buttons
+  if (_showDrawRangeButton)
+  {
+   DrawRangeButton();
+  }
  
   
 
@@ -348,6 +431,15 @@ void CopyInitialConfigVariables()
    _endOfDayOffsetHours = EndOfDayOffsetHours;
    _setLimitsOnPendingOrders = SetLimitsOnPendingOrders;
    _adjustStopOnTriggeredPendingOrders = AdjustStopOnTriggeredPendingOrders;
+   _beginningOfDayOffsetHours = BeginningOfDayOffsetHours;
+   _showDrawRangeButton = ShowDrawRangeButton;
+   _setPendingOrdersOnRanges = SetPendingOrdersOnRanges;
+   _accountForSpreadOnPendingBuyOrders = AccountForSpreadOnPendingBuyOrders;
+   _pendingLotSize = PendingLotSize;
+   _marginForPendingRangeOrders = MarginForPendingRangeOrders;
+   _rangeLinesColor = RangeLinesColor;
+   _cancelPendingTrades = CancelPendingTrades;
+
 
 }
 
@@ -472,8 +564,41 @@ void ApplyConfiguration(string fileName)
                {
                   _adjustStopOnTriggeredPendingOrders = (bool) StringToInteger(value);
                }
+        else if (var == "BeginningOfDayOffsetHours")
+               {
+                  _beginningOfDayOffsetHours =  StringToInteger(value);
+               }
+        else if (var == "ShowDrawRangeButton")
+               {
+                  _showDrawRangeButton = (bool) StringToInteger(value);
+               }
+        else if (var == "SetPendingOrdersOnRanges")
+               {
+                  _setPendingOrdersOnRanges  = (bool) StringToInteger(value);
+               }
+        else if (var == "AccountForSpreadOnPendingBuyOrders")
+               {
+                  _accountForSpreadOnPendingBuyOrders = (bool) StringToInteger(value); 
+               }
+        else if (var == "PendingLotSize")
+               {
+                  _pendingLotSize =  StringToDouble(value); 
+               }
+        else if (var == "MarginForPendingRangeOrders")
+               {
+                  _marginForPendingRangeOrders =  StringToDouble(value);
+               }
+        else if (var == "RangeLinesColor")
+               {
+                  _rangeLinesColor =  StringToColor(value);
+               }
+        else if (var == "CancelPendingTrades")
+               {
+                  _cancelPendingTrades = (bool) StringToInteger(value);
+               }
         }
-     }
+              
+      }
    FileClose(fileHandle);
 }
 
@@ -507,6 +632,14 @@ void SaveConfigurationFile()
    FileWriteString(fileHandle, "EndOfDayOffsetHours: " + IntegerToString(_endOfDayOffsetHours) + "\r\n");
    FileWriteString(fileHandle, "SetLimitsOnPendingOrders: " + IntegerToString((int) _setLimitsOnPendingOrders) + "\r\n");
    FileWriteString(fileHandle, "AdjustStopOnTriggeredPendingOrders: " + IntegerToString((int) _adjustStopOnTriggeredPendingOrders) + "\r\n");
+   FileWriteString(fileHandle, "BeginningOfDayOffsetHours: " + IntegerToString((int) _beginningOfDayOffsetHours) + "\r\n");
+   FileWriteString(fileHandle, "ShowDrawRangeButton: " + IntegerToString((int) _showDrawRangeButton) + "\r\n");
+   FileWriteString(fileHandle, "SetPendingOrdersOnRanges: " + IntegerToString((int) _setPendingOrdersOnRanges) + "\r\n");
+   FileWriteString(fileHandle, "AccountForSpreadOnPendingBuyOrders: " + IntegerToString((int) _accountForSpreadOnPendingBuyOrders) + "\r\n");
+   FileWriteString(fileHandle, "PendingLotSize: " + DoubleToString( _pendingLotSize) + "\r\n");
+   FileWriteString(fileHandle, "MarginForPendingRangeOrders: " + DoubleToString(_marginForPendingRangeOrders, 1) + "\r\n");
+   FileWriteString(fileHandle, "RangeLinesColor: " + (string) _rangeLinesColor + "\r\n");
+   FileWriteString(fileHandle, "CancelPendingTrades: " + IntegerToString((int) _cancelPendingTrades) + "\r\n");
 
 
    
@@ -537,8 +670,50 @@ void PrintConfigValues()
    Print( "EndOfDayOffsetHours: " + IntegerToString(_endOfDayOffsetHours) + "\r\n");
    Print("SetLimitsOnPendingOrders: " + IntegerToString((int) _setLimitsOnPendingOrders) + "\r\n");
    Print("AdjustStopOnTriggeredPendingOrders: " + IntegerToString((int) _adjustStopOnTriggeredPendingOrders) + "\r\n");
+   Print("BeginningOfDayOffsetHours: " + IntegerToString((int) _beginningOfDayOffsetHours) + "\r\n");
+   Print("ShowDrawRangeButton: " + IntegerToString((int) _showDrawRangeButton) + "\r\n");
+   Print("SetPendingOrdersOnRanges: " + IntegerToString((int) _setPendingOrdersOnRanges) + "\r\n");
+   Print("AccountForSpreadOnPendingBuyOrders: " + IntegerToString((int) _accountForSpreadOnPendingBuyOrders) + "\r\n");
+   Print("PendingLotSize: " + DoubleToString( _pendingLotSize, 2) + "\r\n");
+   Print("MarginForPendingRangeOrders: " + DoubleToString( _marginForPendingRangeOrders, 1) + "\r\n");
+   Print("RangeLinesColor: " + (string) _adjustStopOnTriggeredPendingOrders + "\r\n");
+   Print("CancelPendingTrades: " + IntegerToString((int) _cancelPendingTrades) + "\r\n");
 }
 
+   void DrawRangeButton()
+   {
+      if(ObjectFind(0, rngButtonName )>= 0)
+        {
+       
+         ResetLastError();
+         bool success = ObjectDelete( rngButtonName);
+         if(!success)
+           {
+               Print("Failed to delete Range Button (" + rngButtonName +").  Error = " + GetLastError());
+           }
+        }
+      ButtonCreate(
+         0, //chart_ID
+         rngButtonName, //name
+         0, //sub_window
+         rngButtonXOffset,
+         rngButtonYOffset,
+         rngButtonWidth,
+         rngButtonHeight,
+         CORNER_LEFT_LOWER,
+         "Draw Range Lines",
+         "Ariel", //fond
+         10, // font_size
+         clrBlack, //text color
+         clrLightGray, //background color
+         clrNONE, // border color
+         false, //pressed/released state
+         false, //selection ??
+         false // hidden
+         
+      );
+  
+   }
    void CheckForClosedTrades()
    {
       int currentlyActiveTradeIds[];
@@ -546,6 +721,40 @@ void PrintConfigValues()
       int maxSeqNo = 0;
       int maxActiveTrade = 0;
       int seqNo = 1;
+      int totalDeletedTrades = 0;
+      static datetime lastDebugPrint = 0;
+      // check for deleted trades (to handle OANDA)
+      if(lastDebugPrint < Time[0])
+        {
+         
+        lastDebugPrint = Time[0];
+      
+      for(int ix=0;ix<totalActiveTrades;ix++)
+        {if(CheckPointer(activeTrades[ix]) == POINTER_INVALID )
+           {
+            PrintFormat("ActiveTrades[%i] pointer is invalid", ix);
+            Alert("ActiveTrades[", ix, "] pointer is invalid");
+            continue;
+           }
+
+         PrintFormat("ActiveTrades[%i]: TradeID: %i, isPending %s",
+            ix, activeTrades[ix].TicketId, (activeTrades[ix].IsPending)?"true":"false");
+        }
+      for(int ix=0;ix<totalActiveTrades;ix++)
+         {
+         if(isDifferent(activeTrades[ix]))
+           {
+            if(DEBUG_ENTRY)
+              {
+               Print("Found possibly deleted trade: Trade ID = " + IntegerToString(activeTrades[ix]));
+              }
+            ArrayResize(deletedTrades, ++totalDeletedTrades);
+            deletedTrades[totalDeletedTrades -1] = activeTrades[ix];
+ 
+           }
+         }
+        }
+        
       ArrayResize(currentlyActiveTradeIds, 0, 10);
       int tradeId;
       while (true)
@@ -597,6 +806,37 @@ void PrintConfigValues()
       }
    }
    
+   bool isDifferent(Position * trade)
+   {
+      if(CheckPointer(trade) == POINTER_INVALID)
+        {
+         Alert("Passed INVALID POINTER to isDiffernt");
+         return false;
+        
+        }
+      bool result = false;
+      
+      Position * brokerPosition = broker.GetTrade(trade.TicketId);
+      if(brokerPosition.OrderType != trade.OrderType)
+        {
+         Print("Order " + IntegerToString(trade.TicketId) + " changed from " + IntegerToString(trade.OrderType) + " to " + IntegerToString(brokerPosition.OrderType));
+         result = true;
+        }
+      if(!result && brokerPosition.OrderClosed != trade.OrderClosed)
+        {
+          Print("Order " + IntegerToString(trade.TicketId) + " Close Time changed from " + TimeToStr(trade.OrderClosed, TIME_MINUTES) + " to " + TimeToStr(brokerPosition.OrderClosed, TIME_MINUTES));
+         result = true;
+        }
+    
+      if(!result && brokerPosition.OrderOpened != trade.OrderOpened)
+        {
+         PrintFormat("Order %i changed from OrderOpened at %s to %s", trade.TicketId, TimeToStr(trade.OrderOpened, TIME_MINUTES), TimeToStr(brokerPosition.OrderOpened, TIME_MINUTES));
+         result = true;
+        }
+        
+      delete brokerPosition;
+      return result;
+   }
    void CheckForPendingTradesGoneActive()
    {
       int seqNo = 1;
@@ -658,13 +898,17 @@ bool CheckForNewTrade(int tradeId)
    return true;
 }
 
-void HandleNewEntry( int tradeId, bool savedTrade = false)
+void HandleNewEntry( int tradeId, bool savedTrade = false, double initialStopPrice = 0.0)
 {
    totalActiveTrades++;
    if (totalActiveTrades > ArraySize(activeTrades))
       ArrayResize(activeTrades, totalActiveTrades, 10);
    activeTrades[totalActiveTrades-1] = broker.GetTrade(tradeId);
+   if (initialStopPrice != 0.0)
+      activeTrades[totalActiveTrades - 1].StopPrice = initialStopPrice;
    activeTrade = activeTrades[totalActiveTrades -1];
+   if(CheckPointer(activeTrade) == POINTER_INVALID)
+      Alert("INVALID POINT in Handle New Entry for tradeId %i, initialStopPrice %f", tradeId, initialStopPrice);
    lastTradeId = tradeId;
    lastTradePending = activeTrade.IsPending;
    if (activeTrade.IsPending && !savedTrade)
@@ -694,6 +938,19 @@ void HandleTradeEntry(bool wasPending, bool savedTrade = false)
             Alert("New Trade Entered for " + normalizedSymbol + ". Id = " + IntegerToString(activeTrade.TicketId) +". OpenPrice = " + DoubleToStr(activeTrade.OpenPrice, 5));
          SaveTradeToFile(activeTrade);
         }
+   if(_cancelPendingTrades)
+     {
+      for(int ix=totalActiveTrades - 1;ix >=0 ;ix--)
+        {
+            if(activeTrades[ix] == activeTrade) continue;
+            if(activeTrades[ix].IsPending && (activeTrades[ix].OrderType & 0x01) == (activeTrade.OrderType & 0x01))
+              {
+                  PrintFormat("Attempting to Delete trade %i. OrderType=%i.  ActiveTrade = %i, ActiveTradeType = %i", activeTrades[ix].TicketId,
+                     activeTrades[ix].OrderType, activeTrade.TicketId, activeTrade.OrderType);
+                  broker.DeletePendingTrade(activeTrades[ix]);
+              }
+        }
+     }
    string objectName = Prefix + "Entry";
    if (!savedTrade) SetStopAndProfitLevels(activeTrade, wasPending);
    if (activeTrade.OrderType == OP_BUY)
@@ -721,6 +978,22 @@ void HandleTradeEntry(bool wasPending, bool savedTrade = false)
       ObjectSetInteger(0, objectName, OBJPROP_ARROWCODE, 4);
       ObjectSetInteger(0, objectName, OBJPROP_COLOR, Red);
    }
+   if(!savedTrade)
+     {
+      int xPixels = ChartWidthInPixels();
+      int yPixels = ChartHeightInPixelsGet();
+      ChartForegroundSet(0);
+      string fileName= TimeToStr(TimeCurrent(), TIME_DATE | TIME_MINUTES) +
+          "_" + Symbol();
+      StringReplace(fileName, ":", "_");
+      fileName +=  (activeTrade.OrderType == OP_BUY)? (" L" +IntegerToString((long) longTradeNumberForDay)): (" S" + IntegerToString((long) shortTradeNumberForDay));
+      fileName += ".png";
+      if(DEBUG_ORDER)
+        {
+          Print("Capturing Screen shot into " + fileName );
+        }
+      ChartScreenShot(0, fileName, xPixels, yPixels);
+     }
 }
 
 void SetStopAndProfitLevels(Position * trade, bool wasPending)
@@ -866,13 +1139,13 @@ void HandleClosedTrade(bool savedTrade = false)
                         rectLow = existingLow;
                      }
                      datetime existingStart = ObjectGetInteger(0, rectName, OBJPROP_TIME1);
-                     if (existingStart < rectStart)
+                     if (existingStart < rectStart && existingStart > beginningOfDay)
                      {
                         rectStart = existingStart;
                      }
                   }
                   ObjectDelete(0, rectName); // Just in case it already exists.
-                  ObjectCreate(0,rectName, OBJ_RECTANGLE, 0, rectStart, rectHigh, endOfDay, rectLow);
+                  ObjectCreate(0,rectName, OBJ_RECTANGLE, 0, rectStart, rectHigh, beginningOfDay + 24 * 60 *60 , rectLow);
                   ObjectSetInteger(0, rectName, OBJPROP_COLOR, _noEntryZoneColor);
                }
            }
@@ -968,7 +1241,7 @@ bool CheckSaveFileValid()
    if (fileHandle != -1)
    {
       string line = FileReadString(fileHandle);
-      if (line == StringFormat("DataVersion: %i", DFVersion)) // versions match
+      if (line == StringFormat("DataVersion: %i", DFVersion) || line == "DataVersion: 1") // versions match
       {
          line = FileReadString(fileHandle);
          StringReplace(line, "Server Trade Date: ", "");
@@ -1005,7 +1278,7 @@ void SaveTradeToFile(Position *trade)
          FileWriteString(fileHandle,StringFormat("DataVersion: %i\r\n", DFVersion));
          FileWriteString(fileHandle, StringFormat("Server Trade Date: %s\r\n", TimeToString(TimeCurrent(), TIME_DATE)));
       }
-      FileWriteString(fileHandle, StringFormat("Trade ID: %i\r\n", trade.TicketId));
+      FileWriteString(fileHandle, StringFormat("Trade ID: %i Initial Stop: %f\r\n", trade.TicketId, trade.StopPrice));
       FileClose(fileHandle);
    }
 }
@@ -1032,11 +1305,12 @@ void UpdateGV()
 
 void ReadOldTrades()
 {
+  
    int fileHandle = FileOpen(saveFileName, FILE_ANSI | FILE_TXT | FILE_READ);
    if (fileHandle != -1)
    {
       string line = FileReadString(fileHandle);
-      if (line == StringFormat("DataVersion: %i", DFVersion)) // versions match
+      if (line == StringFormat("DataVersion: %i", DFVersion)|| line == "DataVersion: 1") // versions match
       {
          line = FileReadString(fileHandle);
          StringReplace(line, "Server Trade Date: ", "");
@@ -1048,8 +1322,17 @@ void ReadOldTrades()
                line = FileReadString(fileHandle);
                StringReplace(line, "Trade ID: ", "");
                int tradeId = StrToInteger(line);
+               double stopLoss = 0.0;
+               int stopLossPos = StringFind(line, "Initial Stop");
+               if(stopLossPos != -1)
+               {
+                  line = StringSubstr(line, stopLossPos);
+                  StringReplace(line, "Intial Stop: ", "");
+                  stopLoss = StrToDouble(line);
+               }
                lastTradeId = tradeId;
-               HandleNewEntry(tradeId,true);
+               PrintFormat("Calling HandleNewEntry for saved trade %i, with stop loss %f", tradeId, stopLoss);
+               HandleNewEntry(tradeId,true, stopLoss);
                if (activeTrade.OrderClosed != 0)
                {
                   HandleClosedTrade(true);
@@ -1071,6 +1354,243 @@ datetime GetDate(datetime time)
 }
 void InitializeActiveTradeArray()
 {
+ 
    ArrayResize(activeTrades, 0, 10);
    totalActiveTrades = 0;  
+   
 }
+
+void PlotRangeLines()
+{
+   ObjectSetInteger(0, rngButtonName, OBJPROP_STATE, true);
+   datetime TimeCopy[];
+   ArrayCopy(TimeCopy, Time, 0, 0, WHOLE_ARRAY);
+   double HighPrices[];
+   ArrayCopy(HighPrices, High, 0, 0, WHOLE_ARRAY);
+   double LowPrices[];
+   ArrayCopy(LowPrices, Low, 0, 0, WHOLE_ARRAY);
+   FindDayMinMax(beginningOfDay, TimeCopy[0], TimeCopy, HighPrices, LowPrices);
+   if (ObjectFind(0, Prefix + "_DayRangeHigh") == 0)
+    ObjectDelete(0, Prefix + "_DayRangeHigh");
+   if (ObjectFind(0, Prefix + "_DayRangeLow") == 0) ObjectDelete(0, Prefix + "_DayRangeLow");
+   if (ObjectFind(0, Prefix + "_DayHighArrow") == 0) ObjectDelete(0, Prefix + "_DayHighArrow");
+   if (ObjectFind(0, Prefix + "_DayLowArrow") == 0) ObjectDelete(0, Prefix + "_DayLowArrow");
+   ObjectCreate(0, Prefix + "_DayRangeHigh", OBJ_TREND, 0, dayHiTime, dayHi, beginningOfDay + 19*60*60, dayHi);
+   ObjectSetInteger(0, Prefix + "_DayRangeHigh", OBJPROP_COLOR, _rangeLinesColor);
+   ObjectSet(Prefix + "_DayRangeHigh", OBJPROP_RAY, false);
+   ObjectCreate(0, Prefix + "_DayHighArrow", OBJ_ARROW_RIGHT_PRICE, 0, beginningOfDay + 19 * 60 *60 +15*60, dayHi);
+   ObjectSetInteger(0, Prefix + "_DayHighArrow", OBJPROP_COLOR, Blue);
+   ObjectCreate(0, Prefix + "_DayRangeLow", OBJ_TREND, 0, dayLoTime, dayLo, beginningOfDay + 19*60*60, dayLo);
+   ObjectSetInteger(0, Prefix + "_DayRangeLow", OBJPROP_COLOR, _rangeLinesColor);
+   ObjectSet(Prefix + "_DayRangeLow", OBJPROP_RAY, false);
+   ObjectCreate(0, Prefix + "_DayLowArrow", OBJ_ARROW_RIGHT_PRICE, 0, beginningOfDay + 19 * 60 *60 +15*60, dayLo);
+   ObjectSetInteger(0, Prefix + "_DayLowArrow", OBJPROP_COLOR, Blue);
+   int spread = SymbolInfoInteger(Symbol(), SYMBOL_SPREAD);
+   CreatePendingOrdersForRange(dayHi, OP_BUYSTOP, _setPendingOrdersOnRanges, _accountForSpreadOnPendingBuyOrders, _marginForPendingRangeOrders, spread);
+   CreatePendingOrdersForRange(dayLo, OP_SELLSTOP, _setPendingOrdersOnRanges, _accountForSpreadOnPendingBuyOrders, _marginForPendingRangeOrders, spread);
+   ObjectSetInteger(0, rngButtonName, OBJPROP_STATE,false);
+   
+}
+   
+void FindDayMinMax(datetime start, datetime end, datetime& TimeCopy[], double& HighPrices[], double& LowPrices[])
+{
+   dayHi = 0.0;
+   dayLo = 9999.99;
+   datetime now = TimeCopy[0];
+   if (now < end) end = now;
+   int candlePeriod = TimeCopy[0] - TimeCopy[1];
+   int interval = (now - start)/ candlePeriod; 
+   while(TimeCopy[interval] <= end && interval > 0)
+     {
+         if (HighPrices[interval] >dayHi)
+         {
+            dayHi = HighPrices[interval];
+            dayHiTime = TimeCopy[interval];
+         }
+         if (LowPrices[interval] < dayLo)
+         {
+            dayLo = LowPrices[interval];
+            dayLoTime = TimeCopy[interval];
+         }
+         interval--;
+     }
+}
+
+void CreatePendingOrdersForRange( double triggerPrice, int operation, bool setPendingOrders, bool allowForSpread, int margin, int spread)
+{
+   // Delete any existing pending order of same operation type
+   for(int ix=0;ix<totalActiveTrades;ix++)
+     {
+         if(activeTrades[ix].IsPending && activeTrades[ix].OrderType == operation)
+           {
+            broker.DeletePendingTrade(activeTrades[ix]);
+            activeTrade = activeTrades[ix];
+            HandleDeletedTrade(); // Don't wait for it to be called at next tick.  Do it now.
+            break;
+           }
+     }
+   double price;
+   if(DEBUG_ORDER)
+     {
+      string setPendingOrdersString = setPendingOrders? "TRUE" : "FALSE";
+      Print ("About to set pending order. setPendingOrders = " +setPendingOrdersString);
+     }
+   if (!setPendingOrders) return;
+   if (operation == OP_SELLSTOP)
+      price = triggerPrice  - (margin * Point * FiveDig);
+   else
+   {
+      price = triggerPrice + (margin * Point * FiveDig);
+      if (allowForSpread)
+         price += spread * Point;
+   }
+   Position * trade = new Position();
+   trade.IsPending = true;
+   trade.OpenPrice = price;
+   trade.OrderType = operation;
+   trade.Symbol = broker.NormalizeSymbol(Symbol());
+   trade.LotSize = _pendingLotSize;
+   if (trade.LotSize == 0) 
+   {
+       Position * lastTrade = broker.FindLastTrade();
+      if (lastTrade != NULL) trade.LotSize = lastTrade.LotSize;
+      if(CheckPointer(lastTrade) == POINTER_DYNAMIC)
+        {
+         delete(lastTrade);
+        }
+      if(trade.LotSize == 0 && DEBUG_ORDER)
+        {
+         Print("Configured LotSize = 0 and no historical order found.  LotSize is 0");
+        }
+   }
+   if(DEBUG_ORDER)
+     {
+      Print("About to place pending order: Symbol=" +trade.Symbol + " Price = " + DoubleToStr(trade.OpenPrice));
+     }
+   broker.CreateOrder(trade);
+   delete(trade);
+   
+}
+//+------------------------------------------------------------------+
+//| Create the button                                                |
+//+------------------------------------------------------------------+
+bool ButtonCreate(const long              chart_ID=0,               // chart's ID
+                  const string            name="Button",            // button name
+                  const int               sub_window=0,             // subwindow index
+                  const int               x=0,                      // X coordinate
+                  const int               y=0,                      // Y coordinate
+                  const int               width=50,                 // button width
+                  const int               height=18,                // button height
+                  const ENUM_BASE_CORNER  corner=CORNER_LEFT_UPPER, // chart corner for anchoring
+                  const string            text="Button",            // text
+                  const string            font="Arial",             // font
+                  const int               font_size=10,             // font size
+                  const color             clr=clrBlack,             // text color
+                  const color             back_clr=C'236,233,216',  // background color
+                  const color             border_clr=clrNONE,       // border color
+                  const bool              state=false,              // pressed/released
+                  const bool              back=false,               // in the background
+                  const bool              selection=false,          // highlight to move
+                  const bool              hidden=true,              // hidden in the object list
+                  const long              z_order=0)                // priority for mouse click
+  {
+//--- reset the error value
+   ResetLastError();
+//--- create the button
+   if(!ObjectCreate(chart_ID,name,OBJ_BUTTON,sub_window,0,0))
+     {
+      Print(__FUNCTION__,
+            ": failed to create the button! Error code = ",GetLastError());
+      return(false);
+     }
+//--- set button coordinates
+   ObjectSetInteger(chart_ID,name,OBJPROP_XDISTANCE,x);
+   ObjectSetInteger(chart_ID,name,OBJPROP_YDISTANCE,y);
+//--- set button size
+   ObjectSetInteger(chart_ID,name,OBJPROP_XSIZE,width);
+   ObjectSetInteger(chart_ID,name,OBJPROP_YSIZE,height);
+//--- set the chart's corner, relative to which point coordinates are defined
+   ObjectSetInteger(chart_ID,name,OBJPROP_CORNER,corner);
+//--- set the text
+   ObjectSetString(chart_ID,name,OBJPROP_TEXT,text);
+//--- set text font
+   ObjectSetString(chart_ID,name,OBJPROP_FONT,font);
+//--- set font size
+   ObjectSetInteger(chart_ID,name,OBJPROP_FONTSIZE,font_size);
+//--- set text color
+   ObjectSetInteger(chart_ID,name,OBJPROP_COLOR,clr);
+//--- set background color
+   ObjectSetInteger(chart_ID,name,OBJPROP_BGCOLOR,back_clr);
+//--- set border color
+   ObjectSetInteger(chart_ID,name,OBJPROP_BORDER_COLOR,border_clr);
+//--- display in the foreground (false) or background (true)
+   ObjectSetInteger(chart_ID,name,OBJPROP_BACK,back);
+//--- set button state
+   ObjectSetInteger(chart_ID,name,OBJPROP_STATE,state);
+//--- enable (true) or disable (false) the mode of moving the button by mouse
+   ObjectSetInteger(chart_ID,name,OBJPROP_SELECTABLE,selection);
+   ObjectSetInteger(chart_ID,name,OBJPROP_SELECTED,selection);
+//--- hide (true) or display (false) graphical object name in the object list
+   ObjectSetInteger(chart_ID,name,OBJPROP_HIDDEN,hidden);
+//--- set the priority for receiving the event of a mouse click in the chart
+   ObjectSetInteger(chart_ID,name,OBJPROP_ZORDER,z_order);
+//--- successful execution
+   return(true);
+  }
+  
+//+------------------------------------------------------------------+
+//| The function receives the chart width in pixels.                 |
+//+------------------------------------------------------------------+
+int ChartWidthInPixels(const long chart_ID=0)
+  {
+//--- prepare the variable to get the property value
+   long result=-1;
+//--- reset the error value
+   ResetLastError();
+//--- receive the property value
+   if(!ChartGetInteger(chart_ID,CHART_WIDTH_IN_PIXELS,0,result))
+     {
+      //--- display the error message in Experts journal
+      Print(__FUNCTION__+", Error Code = ",GetLastError());
+     }
+//--- return the value of the chart property
+   return((int)result);
+  }
+  
+//+------------------------------------------------------------------+
+//| The function receives the chart height value in pixels.          |
+//+------------------------------------------------------------------+
+int ChartHeightInPixelsGet(const long chart_ID=0,const int sub_window=0)
+  {
+//--- prepare the variable to get the property value
+   long result=-1;
+//--- reset the error value
+   ResetLastError();
+//--- receive the property value
+   if(!ChartGetInteger(chart_ID,CHART_HEIGHT_IN_PIXELS,sub_window,result))
+     {
+      //--- display the error message in Experts journal
+      Print(__FUNCTION__+", Error Code = ",GetLastError());
+     }
+//--- return the value of the chart property
+   return((int)result);
+  } 
+  
+//+---------------------------------------------------------------------------+
+//| The function enables/disables the mode of displaying a price chart on the |
+//| foreground.                                                               |
+//+---------------------------------------------------------------------------+
+bool ChartForegroundSet(const bool value,const long chart_ID=0)
+  {
+//--- reset the error value
+   ResetLastError();
+//--- set property value
+   if(!ChartSetInteger(chart_ID,CHART_FOREGROUND,0,value))
+     {
+      //--- display the error message in Experts journal
+      Print(__FUNCTION__+", Error Code = ",GetLastError());
+      return(false);
+     }
+//--- successful execution
+   return(true);
+  }     

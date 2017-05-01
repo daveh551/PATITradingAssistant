@@ -12,4 +12,3 @@ string DoubleToStrMorePrecision(double number,int precision);
 string IntegerToHexString(int integer_number);
 
 #import
-

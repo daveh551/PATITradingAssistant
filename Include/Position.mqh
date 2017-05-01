@@ -26,6 +26,7 @@ public:
                     double ClosePrice;
                     double StopPrice;
                     double TakeProfitPrice;
+                    double LotSize;
                     int OrderType;                    
                     bool IsPending;
   };
