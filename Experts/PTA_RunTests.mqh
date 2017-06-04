@@ -203,7 +203,7 @@ bool CanDetectANewActiveOrder()
 {
    Print ("Beginning CanDetectANewActiveOrder");
    FakeBroker *testBroker = broker;
-   InitializeActiveTradeArray();
+   InitializeTradeArrays();
    ClearGlobalVariables();
    string gvName = GVPrefix + "1LastOrderId";
    GlobalVariableSet(gvName, 12345.0);
@@ -219,7 +219,7 @@ bool CanDetectMultipleNewActiveOrders()
 {
    Print ("Beginning CanDetectMultipleNewActiveOrders");
    FakeBroker *testBroker = broker;
-   InitializeActiveTradeArray();
+   InitializeTradeArrays();
    ClearGlobalVariables();
    string gvName = GVPrefix + "1LastOrderId";
    GlobalVariableSet(gvName, 12345.0);
@@ -237,7 +237,7 @@ bool CanDetectNewPendingOrder()
 {
    Print ("Beginning CanDetectANewPendingOrder");
    FakeBroker *testBroker = broker;
-   InitializeActiveTradeArray();
+   InitializeTradeArrays();
    ClearGlobalVariables();
    string gvName = GVPrefix + "1LastOrderId";
    GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
@@ -253,7 +253,7 @@ bool CanDetectMultipleNewPendingTrades()
 {
    Print("Beginning CanDetectMultipleNewPendingTrades");
    FakeBroker *testBroker = broker;
-   InitializeActiveTradeArray();
+   InitializeTradeArrays();
    ClearGlobalVariables();
    string gvName = GVPrefix + "1LastOrderId";
    GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
@@ -263,8 +263,8 @@ bool CanDetectMultipleNewPendingTrades()
    testBroker.OrdersToReturn[1].OrderType = OP_BUYLIMIT;
    OnTick();
    if (!Assert(totalActiveTrades == 2, "Number of active trades is not 2")) return false;
-   if (!Assert(activeTrades[0].IsPending, "IsPending for first trade is not true")) return false;
-   return (Assert(activeTrades[1].IsPending, "IsPending for second trade is not true"));
+   if (!Assert(activeTradesLastTick[0].IsPending, "IsPending for first trade is not true")) return false;
+   return (Assert(activeTradesLastTick[1].IsPending, "IsPending for second trade is not true"));
    
 }
 
@@ -274,7 +274,7 @@ bool CanDetectMultipleNewMixedPendingAndActiveTrades()
 {
    Print("Beginning CanDetectMultipleNewMixedPendingAndActiveTrades");
    FakeBroker *testBroker = broker;
-   InitializeActiveTradeArray();
+   InitializeTradeArrays();
    ClearGlobalVariables();
    string gvName = GVPrefix + "1LastOrderId";
    GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
@@ -286,8 +286,8 @@ bool CanDetectMultipleNewMixedPendingAndActiveTrades()
    OnTick();
    
    if (!Assert(totalActiveTrades == 2, "Number of active trades is not 2")) return false;
-   if (!Assert(activeTrades[0].IsPending == false, "IsPending is set for first trade")) return false;
-   return (Assert(activeTrades[1].IsPending, "IsPending for second trade is not true"));
+   if (!Assert(activeTradesLastTick[0].IsPending == false, "IsPending is set for first trade")) return false;
+   return (Assert(activeTradesLastTick[1].IsPending, "IsPending for second trade is not true"));
 }
 
 //Scenario 7
@@ -296,7 +296,7 @@ bool CanHandlePendingTradeStillPending()
 {
    Print("Beginning CanHandlePendingTradeStillPending");
    FakeBroker *testBroker = broker;
-   InitializeActiveTradeArray();
+   InitializeTradeArrays();
    ClearGlobalVariables();
    string gvName = GVPrefix + "1LastOrderId";
    GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
@@ -306,7 +306,7 @@ bool CanHandlePendingTradeStillPending()
    //Now, no changes, next Tick - trade still pending
    OnTick();
    if (!Assert(totalActiveTrades == 1, "Number of active trades is not 1")) return false;
-   return Assert(activeTrades[0].IsPending, "IsPending is no longer true");
+   return Assert(activeTradesLastTick[0].IsPending, "IsPending is no longer true");
 }
 
 //Scenario 8
@@ -315,7 +315,7 @@ bool CanDetectPendingTradeGoneActive()
 {
    Print("Beginning CanDetectPendingTradeGoneActive");
    FakeBroker *testBroker = broker;
-   InitializeActiveTradeArray();
+   InitializeTradeArrays();
    ClearGlobalVariables();
    string gvName = GVPrefix + "1LastOrderId";
    GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
@@ -326,7 +326,7 @@ bool CanDetectPendingTradeGoneActive()
    testBroker.OrdersToReturn[0].OrderType = OP_BUY;
    OnTick();
    if (!Assert(totalActiveTrades == 1, "Number of active trades is no longer 1")) return false;
-   return Assert(activeTrades[0].IsPending == false, "IsPending is still true");
+   return Assert(activeTradesLastTick[0].IsPending == false, "IsPending is still true");
 }
 
 //Scenario 9
@@ -336,7 +336,7 @@ bool CanDetectPendingTradeNowDeleted()
 {
    Print("Beginning CanDetectPendingTradeNowDeleted");
    FakeBroker *testBroker = broker;
-   InitializeActiveTradeArray();
+   InitializeTradeArrays();
    ClearGlobalVariables();
    string gvName = GVPrefix + "1LastOrderId";
    GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
@@ -346,8 +346,7 @@ bool CanDetectPendingTradeNowDeleted()
    GlobalVariableSet(gvName, 0); // Delete pending order
    OnTick();
    if (!Assert(totalActiveTrades == 0, "Number of Active Orders is not 0")) return false;
-   if (!Assert(ArraySize(activeTrades) == 1, "activeTrades array size is not 1")) return false;
-   return Assert(activeTrades[0] == NULL, "Trade not deleted from array");
+   return Assert(activeTradesLastTick[0] == NULL, "Trade not deleted from array");
 }
 
 //Scenario 10
@@ -356,7 +355,7 @@ bool CanDetectFirstPendingTradeNowActiveFromAmongMultipleTrades()
 {
    Print ("Beginning CanDetectFirstPendingTradeNowActiveFromAmongMultipleTrades");
    FakeBroker *testBroker = broker;
-   InitializeActiveTradeArray();
+   InitializeTradeArrays();
    ClearGlobalVariables();
    string gvName = GVPrefix + "1LastOrderId";
    GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
@@ -370,8 +369,8 @@ bool CanDetectFirstPendingTradeNowActiveFromAmongMultipleTrades()
    DeleteAllObjects();
    OnTick();
    if (!Assert(totalActiveTrades == 2, "Number of Active Orders is not 2")) return false;
-   if (!Assert(activeTrades[0].IsPending == false, "IsPending for first trade is set")) return false;
-   if (!Assert(activeTrades[1].IsPending, "IsPending for first trade is not set")) return false;
+   if (!Assert(activeTradesLastTick[0].IsPending == false, "IsPending for first trade is set")) return false;
+   if (!Assert(activeTradesLastTick[1].IsPending, "IsPending for first trade is not set")) return false;
    return Assert(!EntryArrowDoesNotExist(Prefix+"Entry"), "Entry arrow not created for pending order gone active");
 }
 //Scenario 10a
@@ -380,7 +379,7 @@ bool CanDetectSecondPendingTradeNowActiveFromAmongMultipleTrades()
 {
    Print ("Beginning CanDetectSecondPendingTradeNowActiveFromAmongMultipleTrades");
    FakeBroker *testBroker = broker;
-   InitializeActiveTradeArray();
+   InitializeTradeArrays();
    ClearGlobalVariables();
    string gvName = GVPrefix + "1LastOrderId";
    GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
@@ -393,8 +392,8 @@ bool CanDetectSecondPendingTradeNowActiveFromAmongMultipleTrades()
    testBroker.OrdersToReturn[1].OrderType = OP_SELL;
    OnTick();
    if (!Assert(totalActiveTrades == 2, "Number of Active Orders is not 2")) return false;
-   if (!Assert(activeTrades[0].IsPending, "IsPending for first trade is not set")) return false;
-   return (Assert(activeTrades[1].IsPending == false, "IsPending for first trade is set"));
+   if (!Assert(activeTradesLastTick[0].IsPending, "IsPending for first trade is not set")) return false;
+   return (Assert(activeTradesLastTick[1].IsPending == false, "IsPending for first trade is set"));
    
 }
 //Scenario 11
@@ -404,7 +403,7 @@ bool CanDetectMultiplePendingTradesGoingActive()
 {
    Print ("Beginning CanDetectMultiplePendingTradesGoingActive");
    FakeBroker *testBroker = broker;
-   InitializeActiveTradeArray();
+   InitializeTradeArrays();
    ClearGlobalVariables();
    string gvName = GVPrefix + "1LastOrderId";
    GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
@@ -418,8 +417,8 @@ bool CanDetectMultiplePendingTradesGoingActive()
 
    OnTick();
    if (!Assert(totalActiveTrades == 2, "Number of Active Orders is not 2")) return false;
-   if (!Assert(activeTrades[0].IsPending == false, "IsPending for first trade is set")) return false;
-   return (Assert(activeTrades[1].IsPending == false, "IsPending for first trade is set"));
+   if (!Assert(activeTradesLastTick[0].IsPending == false, "IsPending for first trade is set")) return false;
+   return (Assert(activeTradesLastTick[1].IsPending == false, "IsPending for first trade is set"));
 }
 
 //Scenario 12
@@ -428,7 +427,7 @@ bool CanDetectActiveTradeBeingClosed()
 {
    Print ("Beginning CanDetectActiveTradeBeingClosed");
    FakeBroker *testBroker = broker;
-   InitializeActiveTradeArray();
+   InitializeTradeArrays();
    ClearGlobalVariables();
    string gvName = GVPrefix + "1LastOrderId";
    GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
@@ -438,8 +437,7 @@ bool CanDetectActiveTradeBeingClosed()
    testBroker.OrdersToReturn[0].OrderClosed = TimeCurrent();
    OnTick();
    if (!Assert(totalActiveTrades == 0, "Number of Active Orders is not 0")) return false;
-   if (!Assert(ArraySize(activeTrades) == 1, "activeTrades array is not size 1")) return false;
-   return Assert(activeTrades[0] == NULL, "First entry in activeTrades is not null");
+   return Assert(activeTradesLastTick[0] == NULL, "First entry in activeTrades is not null");
    
 
 }
@@ -450,7 +448,7 @@ bool CanDetectMultipleActiveTradesWithFirstOneBeingClosed()
 {
    Print ("Beginning CanDetectMultipleActiveTradesWithFirstOneBeingClosed");
    FakeBroker *testBroker = broker;
-   InitializeActiveTradeArray();
+   InitializeTradeArrays();
    ClearGlobalVariables();
    string gvName = GVPrefix + "1LastOrderId";
    GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
@@ -463,9 +461,8 @@ bool CanDetectMultipleActiveTradesWithFirstOneBeingClosed()
    testBroker.OrdersToReturn[0].OrderClosed = TimeCurrent();
    OnTick();   
    if (!Assert(totalActiveTrades == 1, "Number of open orders is not 1)")) return false;
-   if (!Assert(ArraySize(activeTrades) == 2, "activeOrder array size is not 2")) return false;
-   if (!Assert(CheckPointer(activeTrades[0]) == POINTER_DYNAMIC, "first active order is not a valid pointer"))return false;
-   return Assert(activeTrades[1] == NULL, "second active order is not null");
+   if (!Assert(CheckPointer(activeTradesLastTick[0]) == POINTER_DYNAMIC, "first active order is not a valid pointer"))return false;
+   return Assert(activeTradesLastTick[1] == NULL, "second active order is not null");
 }
 
 //Scenario 13a
@@ -474,7 +471,7 @@ bool CanDetectMultipleActiveTradesWithSecondOneBeingClosed()
 {
    Print ("Beginning CanDetectMultipleActiveTradesWithSecondOneBeingClosed");
    FakeBroker *testBroker = broker;
-   InitializeActiveTradeArray();
+   InitializeTradeArrays();
    ClearGlobalVariables();
    string gvName = GVPrefix + "1LastOrderId";
    GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
@@ -487,9 +484,8 @@ bool CanDetectMultipleActiveTradesWithSecondOneBeingClosed()
    testBroker.OrdersToReturn[1].OrderClosed = TimeCurrent();
    OnTick();   
    if (!Assert(totalActiveTrades == 1, "Number of open orders is not 1)")) return false;
-   if (!Assert(ArraySize(activeTrades) == 2, "activeOrder array size is not 2")) return false;
-   if (!Assert(CheckPointer(activeTrades[0]) == POINTER_DYNAMIC, "first active order is not a valid pointer"))return false;
-   return Assert(activeTrades[1] == NULL, "second active order is not null");
+   if (!Assert(CheckPointer(activeTradesLastTick[0]) == POINTER_DYNAMIC, "first active order is not a valid pointer"))return false;
+   return Assert(activeTradesLastTick[1] == NULL, "second active order is not null");
 }
 
 //Scenario 14
@@ -498,7 +494,7 @@ bool CanDetectMultipleActiveTradesWithAllTradesBeingClosed()
 {
    Print ("Beginning CanDetectMultipleActiveTradesWithAllTradesBeingClosed");
    FakeBroker *testBroker = broker;
-   InitializeActiveTradeArray();
+   InitializeTradeArrays();
    ClearGlobalVariables();
    string gvName = GVPrefix + "1LastOrderId";
    GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
@@ -514,16 +510,15 @@ bool CanDetectMultipleActiveTradesWithAllTradesBeingClosed()
    testBroker.OrdersToReturn[1].OrderClosed = TimeCurrent();
    OnTick();   
    if (!Assert(totalActiveTrades == 0, "Number of open orders is not 0)")) return false;
-   if (!Assert(ArraySize(activeTrades) == 2, "activeOrder array size is not 2")) return false;
-   if (!Assert(activeTrades[0] == NULL, "first active order is not null"))return false;
-   return Assert(activeTrades[1] == NULL, "second active order is not null");
+   if (!Assert(activeTradesLastTick[0] == NULL, "first active order is not null"))return false;
+   return Assert(activeTradesLastTick[1] == NULL, "second active order is not null");
 }
 
 bool DetectingNewPendingOrderDoesNotInvokeNewTradeProcessing()
 {
    Print ("Beginning DetectingNewPendingOrderDoesNotInvokeNewTradeProcessing");
    FakeBroker *testBroker = broker;
-   InitializeActiveTradeArray();
+   InitializeTradeArrays();
    ClearGlobalVariables();
    string gvName = GVPrefix + "1LastOrderId";
    GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
@@ -538,7 +533,7 @@ bool DetectingDeletedPendingOrderDoesNotInvokeClosedTradeProcessing()
 {
    Print ("Beginning DetectingDeletedPendingOrderDoesNotInvokeClosedTradeProcessing");
    FakeBroker *testBroker = broker;
-   InitializeActiveTradeArray();
+   InitializeTradeArrays();
    ClearGlobalVariables();
    string gvName = GVPrefix + "1LastOrderId";
    GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
@@ -558,7 +553,7 @@ bool HandlingContinuingActiveTradeDoesNotInvokeClosedTradeProcessing()
 {
    Print ("Beginning HandlingContinuingActiveTradeDoesNotInvokeClosedTradeProcessing");
    FakeBroker *testBroker = broker;
-   InitializeActiveTradeArray();
+   InitializeTradeArrays();
    ClearGlobalVariables();
    string gvName = GVPrefix + "1LastOrderId";
    GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
@@ -595,14 +590,14 @@ bool ProperlyDetectsNextLevelUp(double currentPrice, double expected)
 
 void SetNoTradesPreviously() // Set up the precondition that there are no trades outstanding that we know about
 {
-   InitializeActiveTradeArray();
+   InitializeTradeArrays();
 }
 
 void CleanUpTestTrades()
 {
-   for(int ix=0;ix < ArraySize(activeTrades);ix++)
+   for(int ix=0;ix < ArraySize(activeTradesLastTick);ix++)
      {
-      if (CheckPointer(activeTrades[ix]) == POINTER_DYNAMIC) delete activeTrades[ix];
+      if (CheckPointer(activeTradesLastTick[ix]) == POINTER_DYNAMIC) delete activeTradesLastTick[ix];
      }
    if (CheckPointer(activeTrade) == POINTER_DYNAMIC) delete activeTrade;
 }

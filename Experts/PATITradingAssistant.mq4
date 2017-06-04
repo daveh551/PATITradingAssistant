@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.34beta3";
+string Version="v0.34beta4";
 string NTIPrefix = "NTI_";
 int DFVersion = 2;
 
@@ -75,7 +75,7 @@ extern color RangeLinesColor = Yellow;
 extern bool CancelPendingTrades = true;
 
 
-const double GVUNINIT = -99999999;
+const double  GVUNINIT= -99999999;
 const string LASTUPDATENAME = "NTI_LastUpdateTime";
 string GVPrefix;
 
@@ -130,10 +130,18 @@ double stopLoss;
 double noEntryPad;
 Position * activeTrade = NULL;
 Broker * broker;
-int totalActiveTrades;
-Position * activeTrades[];
-Position * deletedTrades[];
-int numbDeletedTrade = 0;
+int totalActiveTradeIdsThisTick;
+int activeTradeIdsThisTick[]; 
+int activeTradeIdsArraySize = 0;
+int totalActiveTrades = 0;
+Position * activeTradesLastTick[]; //Trade IDs read from global variables at start of tick
+int activeTradesArraySize = 0;
+int totalDeletedTrades = 0;
+Position * deletedTrades[]; // Trades deleted from last tick to this tick 
+int deletedTradesArraySize = 0;
+int totalNewTrades = 0;
+Position * newTrades[]; // new trades since last tick
+int newTradesArraySize = 0;
 double dayHi;
 double dayLo;
 
@@ -154,7 +162,7 @@ int OnInit()
    DrawVersion(); 
    UpdateGV();
    CopyInitialConfigVariables();
-   InitializeActiveTradeArray();
+
    
 
    
@@ -168,7 +176,7 @@ int OnInit()
       return (INIT_FAILED);  // Keep the EA from running if just testing
    }
    Initialize();
-   EventSetTimer(600);
+   EventSetTimer(600); // 10 minutes
    return(INIT_SUCCEEDED);
   }
 //+------------------------------------------------------------------+
@@ -183,7 +191,7 @@ void OnDeinit(const int reason)
       DeleteAllObjects();
    for(int ix=totalActiveTrades - 1;ix >=0;ix--)
      {
-      if (CheckPointer(activeTrades[ix]) == POINTER_DYNAMIC) delete activeTrades[ix];
+      if (CheckPointer(activeTradesLastTick[ix]) == POINTER_DYNAMIC) delete activeTradesLastTick[ix];
      }
    if (CheckPointer(activeTrade) == POINTER_DYNAMIC) delete activeTrade;
    if (CheckPointer(broker) == POINTER_DYNAMIC) delete broker;
@@ -203,11 +211,8 @@ void OnTick()
       {
          alertedThisBar = false;
          UpdateGV();
-         if(DEBUG_OANDA)
-           {
-            PrintFormat("Currently %i active trades. ActiveTrades array size = %i", totalActiveTrades, ArraySize(activeTrades));
-           }
-         
+
+ 
          /*
          for(int ix=0;ix<totalActiveTrades;ix++)
            {
@@ -239,6 +244,13 @@ void OnTick()
       }
       
    }
+   if(DEBUG_OANDA)
+     {
+      PrintFormat("Currently %i active trades last tick. ", totalActiveTrades);
+     }
+   PopulateActiveTradeIds();
+   PopulateDeletedTrades();
+   PopulateNewTrades();   
    CheckForClosedTrades();
    CheckForPendingTradesGoneActive();
    CheckForNewTrades();
@@ -272,12 +284,12 @@ void DeleteAllObjects()
    {
    int objs = ObjectsTotal();
    string name;
+   
    for(int cnt=ObjectsTotal()-1;cnt>=0;cnt--)
       {
       name=ObjectName(cnt);
       if (StringFind(name,Prefix,0)>-1) 
       {
-         if (name == rngButtonName) continue; //don't delete the Draw Range Button
          ResetLastError();
          bool success = ObjectDelete(name);
          if(!success)
@@ -300,18 +312,11 @@ void DrawVersion()
    ObjectSet(name,OBJPROP_YDISTANCE,2);
    } //void DrawVersion()
 
-void SetGV(string VarName,double VarVal)
-   {
-   string strVarName = StringConcatenate(Prefix,Symbol(),"_",VarName);
-
-   GlobalVariableSet(strVarName,VarVal);
-   if(DEBUG_GLOBAL)
-      Print("###Set GV ",strVarName," Value=",VarVal);
-   } //void SetGV
 
 double GetGV(string VarName)
    {
-   string strVarName = StringConcatenate(Prefix,Symbol(),"_",VarName);
+   string strVarName = //StringConcatenate(Prefix,Symbol(),"_",VarName);
+      VarName;
    double VarVal = GVUNINIT;
 
    if(GlobalVariableCheck(strVarName))
@@ -393,11 +398,28 @@ void Initialize()
   {
    DrawRangeButton();
   }
+   InitializeTradeArrays();
  
   
 
 }
 
+void InitializeTradeArrays()
+{
+  totalActiveTradeIdsThisTick = 0;
+  activeTradeIdsArraySize = 5;
+  ArrayResize(activeTradeIdsThisTick, activeTradeIdsArraySize);
+ 
+  totalActiveTrades = 0;
+  activeTradesArraySize = 5;
+  ArrayResize(activeTradesLastTick, activeTradesArraySize);
+  totalDeletedTrades = 0;
+  deletedTradesArraySize = 5;
+  ArrayResize(deletedTrades, deletedTradesArraySize);
+  totalNewTrades = 0;
+  newTradesArraySize = 5;
+  ArrayResize(newTrades, newTradesArraySize);
+}
 void CheckNTI()
 {
    double updateVar;
@@ -719,140 +741,164 @@ void PrintConfigValues()
       );
   
    }
+//   void CheckForClosedTrades()
+//   {
+//      int currentlyActiveTradeIds[];
+//      bool foundAClosedTrade = false;
+//      int maxSeqNo = 0;
+//      int maxActiveTrade = 0;
+//      int seqNo = 1;
+//      int totalDeletedTrades = 0;
+//      static datetime lastDebugPrint = 0;
+//      static bool debugThisBar = false;
+//      // check for deleted trades (to handle OANDA)
+//      if(lastDebugPrint < Time[0])
+//      {
+//         lastDebugPrint = Time[0];
+//         debugThisBar = true;
+//      }
+//      for(int ix=0;ix<totalActiveTrades;ix++)
+//      {
+//         if(CheckPointer(activeTradesLastTick[ix]) == POINTER_INVALID )
+//           {
+//            PrintFormat("ActiveTrades[%i] pointer is invalid", ix);
+//            Alert("ActiveTrades[", ix, "] pointer is invalid");
+//            continue;
+//           }
+//
+//         if ((DEBUG_ENTRY || DEBUG_OANDA) && debugThisBar )
+//         {
+//         PrintFormat("ActiveTradesLastTick[%i]: TradeID: %i, isPending %s",
+//            ix, activeTradesLastTick[ix].TicketId, (activeTradesLastTick[ix].IsPending)?"true":"false");
+//         }
+//      }
+//
+//      debugThisBar = false;  // Only print the debug info on the first tick of the candle   
+//        
+//      ArrayResize(currentlyActiveTradeIds, 0, 10);
+//      int tradeId;
+//      while (true)
+//      {
+//         //We're going to (maybe) cycle through the global variables twice
+//         // - once to build a list of those that remain
+//         // - and the second time to find those that have been deleted.
+//         // If none of the GV's are 0, then we can skip this whole thing
+//         
+//         string gvName = GVPrefix + IntegerToString(seqNo) + "LastOrderId";
+//         if (!GlobalVariableCheck(gvName)) break;
+//         tradeId = (int) GlobalVariableGet(gvName);
+//         if (tradeId == 0)
+//         {
+//            foundAClosedTrade = true;
+//         }
+//         else
+//         {
+//            maxSeqNo = seqNo;
+//            ArrayResize(currentlyActiveTradeIds, ++maxActiveTrade, 10);
+//            currentlyActiveTradeIds[maxActiveTrade - 1] = tradeId;
+//         }
+//         seqNo++;
+//      }
+//      for(int ix=0;ix<totalActiveTrades;ix++)
+//         {
+//               // If we cycle through all the currently active trades (from the Global Variable arry)
+//               // without finding this one, then this trade has been deleted
+//         
+//            bool thisTradeDeleted = true;
+//            Position * activeTradeOnLastTick = activeTradesLastTick[ix];
+//            for (int jx = 0; jx < maxActiveTrade; jx++)
+//            {  
+//               if(activeTradeOnLastTick.TicketId = currentlyActiveTradeIds[jx])
+//                 {
+//                     thisTradeDeleted = false;
+//                     break;
+//                 }
+//            }
+//            if(thisTradeDeleted)
+//              {
+//               if(DEBUG_OANDA)
+//               
+//                 {
+//                     PrintFormat("Found deleted trade fot %s (OP = %i, price=%f, stop=%f)",
+//                        activeTradeOnLastTick.Symbol, activeTradeOnLastTick.OrderType, activeTradeOnLastTick.OpenPrice, activeTradeOnLastTick.StopPrice);
+//                 }
+//               ArrayResize(deletedTrades,totalDeletedTrades+1,5);
+//               deletedTrades[totalDeletedTrades++] = activeTradeOnLastTick;
+//              }
+//         }
+//      if (foundAClosedTrade) 
+//      {
+//           //Now any Ids that are in activeTrades not in currentlyActiveTrades are deleted
+//           for(int ix=totalActiveTrades-1;ix >= 0;ix--)
+//           {
+//              bool foundThisTrade = false;
+//              tradeId = activeTradesLastTick[ix].TicketId;
+//              for(int jx=0;jx<maxActiveTrade;jx++)
+//                {
+//                  if (currentlyActiveTradeIds[jx] == tradeId)
+//                  {
+//                     foundThisTrade = true;
+//                     break;
+//                  }
+//                }
+//              if (!foundThisTrade)
+//              {
+//                  activeTrade = activeTradesLastTick[ix];
+//                  if (!activeTrade.IsPending)
+//                     HandleClosedTrade();
+//                  else
+//                     HandleDeletedTrade();
+//              }
+//           }           
+//      }
+//   }
+//   
+
    void CheckForClosedTrades()
    {
-      int currentlyActiveTradeIds[];
-      bool foundAClosedTrade = false;
-      int maxSeqNo = 0;
-      int maxActiveTrade = 0;
-      int seqNo = 1;
-      int totalDeletedTrades = 0;
-      static datetime lastDebugPrint = 0;
-      static bool debugThisBar = false;
-      // check for deleted trades (to handle OANDA)
-      if(lastDebugPrint < Time[0])
-      {
-         lastDebugPrint = Time[0];
-         debugThisBar = true;
-      }
-      for(int ix=0;ix<totalActiveTrades;ix++)
-      {
-         if(CheckPointer(activeTrades[ix]) == POINTER_INVALID )
+      //Because we're modifying the active trade array, do it in reverse order
+      for(int ix=totalActiveTrades-1;ix>= 0;ix--)
+        {
+         int tradeId = activeTradesLastTick[ix].TicketId;
+         //Same thing with deleted trade array
+         for(int jx=totalDeletedTrades-1;jx>=0;jx--)
            {
-            PrintFormat("ActiveTrades[%i] pointer is invalid", ix);
-            Alert("ActiveTrades[", ix, "] pointer is invalid");
-            continue;
+            if(tradeId == deletedTrades[jx].TicketId)
+              {
+               activeTrade = activeTradesLastTick[ix];
+               if(activeTrade.IsPending)
+                 {
+                    HandleDeletedTrade();  //TODO: Need to specify which trade                  
+                 }
+               else
+                 {
+                    HandleClosedTrade();
+                 }
+               RemoveActiveTrade(ix);
+              }
            }
-
-         if ((DEBUG_ENTRY || DEBUG_OANDA) && debugThisBar )
-         {
-         PrintFormat("ActiveTrades[%i]: TradeID: %i, isPending %s",
-            ix, activeTrades[ix].TicketId, (activeTrades[ix].IsPending)?"true":"false");
-         }
-      }
-
-      debugThisBar = false;  // Only print the debug info on the first tick of the candle   
-        
-      ArrayResize(currentlyActiveTradeIds, 0, 10);
-      int tradeId;
-      while (true)
-      {
-         //We're going to (maybe) cycle through the global variables twice
-         // - once to build a list of those that remain
-         // - and the second time to find those that have been deleted.
-         // If none of the GV's are 0, then we can skip this whole thing
-         
-         string gvName = GVPrefix + IntegerToString(seqNo) + "LastOrderId";
-         if (!GlobalVariableCheck(gvName)) break;
-         tradeId = (int) GlobalVariableGet(gvName);
-         if (tradeId == 0)
-         {
-            foundAClosedTrade = true;
-         }
-         else
-         {
-            maxSeqNo = seqNo;
-            ArrayResize(currentlyActiveTradeIds, ++maxActiveTrade, 10);
-            currentlyActiveTradeIds[maxActiveTrade - 1] = tradeId;
-         }
-         seqNo++;
-      }
-      for(int ix=0;ix<totalActiveTrades;ix++)
-         {
-               // If we cycle through all the currently active trades (from the Global Variable arry)
-               // without finding this one, then this trade has been deleted
-         
-            bool thisTradeDeleted = true;
-            Position * activeTradeOnLastTick = activeTrades[ix];
-            for (int jx = 0; jx < maxActiveTrade; jx++)
-            {  
-               if(activeTradeOnLastTick.TicketId = currentlyActiveTradeIds[jx])
-                 {
-                     thisTradeDeleted = false;
-                     break;
-                 }
-            }
-            if(thisTradeDeleted)
-              {
-               if(DEBUG_OANDA)
-               
-                 {
-                     PrintFormat("Found deleted trade fot %s (OP = %i, price=%f, stop=%f)",
-                        activeTradeOnLastTick.Symbol, activeTradeOnLastTick.OrderType, activeTradeOnLastTick.OpenPrice, activeTradeOnLastTick.StopPrice);
-                 }
-               ArrayResize(deletedTrades,numbDeletedTrade+1,5);
-               deletedTrades[numbDeletedTrade++] = activeTradeOnLastTick;
-              }
-         }
-      if (foundAClosedTrade) 
-      {
-           //Now any Ids that are in activeTrades not in currentlyActiveTrades are deleted
-           for(int ix=totalActiveTrades-1;ix >= 0;ix--)
-           {
-              bool foundThisTrade = false;
-              tradeId = activeTrades[ix].TicketId;
-              for(int jx=0;jx<maxActiveTrade;jx++)
-                {
-                  if (currentlyActiveTradeIds[jx] == tradeId)
-                  {
-                     foundThisTrade = true;
-                     break;
-                  }
-                }
-              if (!foundThisTrade)
-              {
-                  activeTrade = activeTrades[ix];
-                  if (!activeTrade.IsPending)
-                     HandleClosedTrade();
-                  else
-                     HandleDeletedTrade();
-              }
-           }           
-      }
+        }
    }
-   
    void CheckForPendingTradesGoneActive()
    {
       int seqNo = 1;
-      while (true)
-      {
-         string gvName = GVPrefix + IntegerToString(seqNo) + "LastOrderId";
-         if (!GlobalVariableCheck(gvName)) break;
-         int tradeId = (int) GlobalVariableGet(gvName);
+      for(int jx=0; jx<totalActiveTradeIdsThisTick; jx++)
+      {         
+         int tradeId = activeTradeIdsThisTick[jx];
          if (tradeId != 0)
          {
             for(int ix=0;ix<totalActiveTrades;ix++)
               {
-                  if (activeTrades[ix] !=NULL &&activeTrades[ix].TicketId == tradeId)
+                  if (activeTradesLastTick[ix] !=NULL &&activeTradesLastTick[ix].TicketId == tradeId)
                   {
-                     if (activeTrades[ix].IsPending)
+                     if (activeTradesLastTick[ix].IsPending)
                      {
                         int orderType = broker.GetType(tradeId);
                         if (orderType == OP_BUY || orderType == OP_SELL) //then no longer pending.
                         {
-                           if (CheckPointer(activeTrades[ix]) == POINTER_DYNAMIC) delete activeTrades[ix];
-                           activeTrades[ix] = broker.GetTrade(tradeId);
-                           activeTrade = activeTrades[ix];
+                           if (CheckPointer(activeTradesLastTick[ix]) == POINTER_DYNAMIC) delete activeTradesLastTick[ix];
+                           activeTradesLastTick[ix] = broker.GetTrade(tradeId);
+                           activeTrade = activeTradesLastTick[ix];
                            HandlePendingTradeGoneActive();
                         }
                      }
@@ -867,40 +913,26 @@ void PrintConfigValues()
    
    void CheckForNewTrades()
    {
-      int seqNo = 1;
-      while (true)
-      {
-         string gvName = GVPrefix + IntegerToString(seqNo) + "LastOrderId";
-         if (!GlobalVariableCheck(gvName)) break;
-         int tradeId = (int) GlobalVariableGet(gvName);
-         if(CheckForNewTrade(tradeId))
-           {
-              HandleNewEntry(tradeId);
-           }
-         seqNo++;
-      }
+     
+      for(int ix=0;ix<totalNewTrades;ix++)
+        {
+         HandleNewEntry(newTrades[ix].TicketId);
+         newTrades[ix] = NULL;
+        }
+      totalNewTrades = 0;
    }
 
-bool CheckForNewTrade(int tradeId)
-{
-   if (tradeId == 0) return false;
-   if (ArraySize(activeTrades)== 0) return true;
-   for(int ix=0;ix<ArraySize(activeTrades);ix++)
-     {
-      if(activeTrades[ix]  != NULL && activeTrades[ix].TicketId== tradeId) return false;
-     }
-   return true;
-}
+
 
 void HandleNewEntry( int tradeId, bool savedTrade = false, double initialStopPrice = 0.0)
 {
-   totalActiveTrades++;
-   if (totalActiveTrades > ArraySize(activeTrades))
-      ArrayResize(activeTrades, totalActiveTrades, 10);
-   activeTrades[totalActiveTrades-1] = broker.GetTrade(tradeId);
-   if (initialStopPrice != 0.0)
-      activeTrades[totalActiveTrades - 1].StopPrice = initialStopPrice;
-   activeTrade = activeTrades[totalActiveTrades -1];
+   //totalActiveTrades++;
+   //if (totalActiveTrades > ArraySize(activeTradesLastTick))
+   //   ArrayResize(activeTradesLastTick, totalActiveTrades, 10);
+   //activeTradesLastTick[totalActiveTrades-1] = broker.GetTrade(tradeId);
+   //if (initialStopPrice != 0.0)
+   //   activeTradesLastTick[totalActiveTrades - 1].StopPrice = initialStopPrice;
+   activeTrade = activeTradesLastTick[totalActiveTrades -1];
    if(CheckPointer(activeTrade) == POINTER_INVALID)
       Alert("INVALID POINTER in Handle New Entry for tradeId %i, initialStopPrice %f", tradeId, initialStopPrice);
    if (!activeTrade.IsPending && matchesDeletedTrade(activeTrade))
@@ -925,8 +957,8 @@ void HandleNewEntry( int tradeId, bool savedTrade = false, double initialStopPri
 }
 bool matchesDeletedTrade(Position * newTrade)
 {
-   if(numbDeletedTrade == 0) return false;
-   for(int ix=0;ix<numbDeletedTrade;ix++)
+   if(totalDeletedTrades == 0) return false;
+   for(int ix=0;ix<totalDeletedTrades;ix++)
      {
          Position * deletedTrade = deletedTrades[ix];
             if(DEBUG_OANDA)
@@ -934,7 +966,7 @@ bool matchesDeletedTrade(Position * newTrade)
                   PrintFormat("Found new trade (ticket %i) matching a deleted trade (ticket %i)",
                      newTrade.TicketId, deletedTrade.TicketId);
               }
-            removeDeletedTrade(ix);
+            RemoveDeletedTrade(ix);
             if(deletedTrade.StopPrice == 0.0) return false;
             if(deletedTrade.StopPrice == newTrade.StopPrice) return true;
      }
@@ -942,15 +974,6 @@ bool matchesDeletedTrade(Position * newTrade)
    return false;
 }
 
-void removeDeletedTrade(int index)
-{
-   for(int ix=index;ix<numbDeletedTrade-1;ix++)
-     {
-         deletedTrades[ix] = deletedTrades[ix+1];
-     }
-   numbDeletedTrade--;
-   deletedTrades[numbDeletedTrade] = NULL;
-}
 void HandlePendingTradeGoneActive()
 {
    HandleTradeEntry(true);
@@ -967,12 +990,12 @@ void HandleTradeEntry(bool wasPending, bool savedTrade = false)
      {
       for(int ix=totalActiveTrades - 1;ix >=0 ;ix--)
         {
-            if(activeTrades[ix] == activeTrade) continue;
-            if(activeTrades[ix].IsPending && (activeTrades[ix].OrderType & 0x01) == (activeTrade.OrderType & 0x01))
+            if(activeTradesLastTick[ix] == activeTrade) continue;
+            if(activeTradesLastTick[ix].IsPending && (activeTradesLastTick[ix].OrderType & 0x01) == (activeTrade.OrderType & 0x01))
               {
-                  PrintFormat("Attempting to Delete trade %i. OrderType=%i.  ActiveTrade = %i, ActiveTradeType = %i", activeTrades[ix].TicketId,
-                     activeTrades[ix].OrderType, activeTrade.TicketId, activeTrade.OrderType);
-                  broker.DeletePendingTrade(activeTrades[ix]);
+                  PrintFormat("Attempting to Delete trade %i. OrderType=%i.  ActiveTrade = %i, ActiveTradeType = %i", activeTradesLastTick[ix].TicketId,
+                     activeTradesLastTick[ix].OrderType, activeTrade.TicketId, activeTrade.OrderType);
+                  broker.DeletePendingTrade(activeTradesLastTick[ix]);
               }
         }
      }
@@ -1182,19 +1205,12 @@ void HandleClosedTrade(bool savedTrade = false)
 }
 void HandleDeletedTrade()
 {
-         for(int ix=0;ix<totalActiveTrades;ix++)
+      for(int ix=0;ix<totalDeletedTrades;ix++)
         {
-         if (CheckPointer(activeTrades[ix]) == POINTER_DYNAMIC && activeTrades[ix].TicketId == activeTrade.TicketId)
-         {
-            //This might not be right - that activeTrade should have been copied into deletedTrades
-            //delete activeTrades[ix];
-            for(int jx=ix;jx<totalActiveTrades-1;jx++)
-              {
-               activeTrades[jx] = activeTrades[jx+1];
-              }
-            activeTrades[totalActiveTrades-1] = NULL;
-            totalActiveTrades--;
-         }
+         if(deletedTrades[ix].TicketId == activeTrade.TicketId)
+           {
+            RemoveDeletedTrade(ix);
+           }
         }
       if (CheckPointer(activeTrade) == POINTER_DYNAMIC)
          delete activeTrade;
@@ -1377,13 +1393,7 @@ datetime GetDate(datetime time)
    timeStruct.hour = 0; timeStruct.min = 0; timeStruct.sec = 0;
    return (StructToTime(timeStruct));
 }
-void InitializeActiveTradeArray()
-{
- 
-   ArrayResize(activeTrades, 0, 10);
-   totalActiveTrades = 0;  
-   
-}
+
 
 void PlotRangeLines()
 {
@@ -1441,15 +1451,157 @@ void FindDayMinMax(datetime start, datetime end, datetime& TimeCopy[], double& H
      }
 }
 
+void PopulateActiveTradeIds()
+{
+        
+         totalActiveTradeIdsThisTick = 0; //abandon any contents from previous tick
+         for(int ix=0; ;ix++)
+           {
+            int tradeId = GetGV(MakeGVname(ix+1));
+            if (tradeId == GVUNINIT) break;
+            if (tradeId == 0) continue;
+            AddActiveTradeId(tradeId);
+           }
+           
+}
+
+void PopulateDeletedTrades()
+{
+   totalDeletedTrades = 0;  //Start fresh
+   // Work through active trades and add any that are not in the activeTradeIdsThisTick array
+   for(int ix=0;ix<totalActiveTrades;ix++)
+     {
+      int tradeId = activeTradesLastTick[ix].TicketId;
+      bool tradeDeleted = true;
+      for(int jx=0;jx<totalActiveTradeIdsThisTick;jx++)
+        {
+         if(tradeId == activeTradeIdsThisTick[jx]) // Then trade is not deleted
+           {
+            tradeDeleted = false;
+            break;
+           }
+        }
+        if(tradeDeleted)
+          {
+           AddDeletedTrade(activeTradesLastTick[ix]);
+          }
+     }
+}
+
+
+void PopulateNewTrades()
+{
+   totalNewTrades = 0;// Start fresh
+   for(int ix=0;ix<totalActiveTradeIdsThisTick;ix++)
+     {
+         int currentActiveTradeId = activeTradeIdsThisTick[ix];
+         bool thisIsANewTrade = true;
+         for(int jx=0;jx<totalActiveTrades;jx++)
+           {
+               if(activeTradesLastTick[jx].TicketId == currentActiveTradeId)
+                 {
+                     thisIsANewTrade = false;
+                     break;
+                 }
+           }
+         if(thisIsANewTrade)
+           {
+               AddNewTrade(currentActiveTradeId);
+           }
+     }
+}
+
+void AddActiveTradeId(int tradeId)
+{
+   
+   if(activeTradeIdsArraySize <= totalActiveTradeIdsThisTick)
+   {
+      ArrayResize(activeTradeIdsThisTick, 2* activeTradeIdsArraySize);
+      activeTradeIdsArraySize *= 2;
+   }
+   activeTradeIdsThisTick[totalActiveTradeIdsThisTick++] = tradeId;
+}
+
+
+void AddNewTrade(int tradeId)
+{
+     Position * newTrade = broker.GetTrade(tradeId);
+     if(newTradesArraySize <= totalNewTrades)
+       {
+        ArrayResize(newTrades, 2* newTradesArraySize);
+        newTradesArraySize *= 2;
+       }
+     newTrades[totalNewTrades++] = newTrade;
+     AddActiveTrade(newTrade);
+     CheckForNewTradeReplacingDeletedTrade(newTrade);
+}
+
+void AddDeletedTrade(Position * trade)
+{
+   if(deletedTradesArraySize<= totalDeletedTrades + 1)
+     {
+         ArrayResize(deletedTrades, deletedTradesArraySize * 2);
+         deletedTradesArraySize *= 2;
+     }
+   deletedTrades[totalDeletedTrades++] = trade;
+}
+
+void AddActiveTrade(Position * newTrade)
+{
+   if(activeTradesArraySize <= totalActiveTrades +1)
+   {
+      ArrayResize(activeTradesLastTick, activeTradesArraySize * 2);
+      activeTradesArraySize *= 2;
+   }
+   activeTradesLastTick[totalActiveTrades++] = newTrade;
+}
+void RemoveActiveTrade(int index)
+{
+   
+   for(int ix=index;ix<totalActiveTrades-1;ix++)
+     {
+         activeTradesLastTick[ix] = activeTradesLastTick[ix+1];
+     }
+   totalActiveTrades--;
+   activeTradesLastTick[totalActiveTrades] = NULL;
+}
+
+void RemoveDeletedTrade(int index)
+{
+   for(int ix=index;ix<totalDeletedTrades-1;ix++)
+     {
+         deletedTrades[ix] = deletedTrades[ix+1];
+     }
+   totalDeletedTrades--;
+   deletedTrades[totalDeletedTrades] = NULL;
+}
+
+void CheckForNewTradeReplacingDeletedTrade(Position * newTrade)
+{
+         
+         for(int jx=0;jx<totalDeletedTrades;jx++)
+           {
+               Position * thisDeletedTrade = deletedTrades[jx];
+               if(thisDeletedTrade.StopPrice == 0.0)  break; //There's no stop loss on the deleted trade, so it doesn't matter
+               if(thisDeletedTrade.OrderType > 1 // Was deleted a pending trade?
+                  && (newTrade.OrderType <= 1) // Is new trade an active trade?
+                  && (thisDeletedTrade.OrderType& 0x01) == (newTrade.OrderType & 0x01) //Are the trades in the same direction?
+                  && thisDeletedTrade.StopPrice == newTrade.StopPrice)  //Then the match
+                 {
+                     newTrade.IsPending = true;                  
+                 }
+           }
+ }
+
 void CreatePendingOrdersForRange( double triggerPrice, int operation, bool setPendingOrders, bool allowForSpread, int margin, int spread)
 {
    // Delete any existing pending order of same operation type
    for(int ix=0;ix<totalActiveTrades;ix++)
      {
-         if(activeTrades[ix].IsPending && activeTrades[ix].OrderType == operation)
+         if(activeTradesLastTick[ix].IsPending && activeTradesLastTick[ix].OrderType == operation)
            {
-            broker.DeletePendingTrade(activeTrades[ix]);
-            activeTrade = activeTrades[ix];
+            broker.DeletePendingTrade(activeTradesLastTick[ix]);
+            activeTrade = activeTradesLastTick[ix];
             HandleDeletedTrade(); // Don't wait for it to be called at next tick.  Do it now.
             break;
            }
@@ -1477,7 +1629,7 @@ void CreatePendingOrdersForRange( double triggerPrice, int operation, bool setPe
    trade.LotSize = _pendingLotSize;
    if (trade.LotSize == 0) 
    {
-       Position * lastTrade = broker.FindLastTrade();
+      Position * lastTrade = broker.FindLastTrade();
       if (lastTrade != NULL) trade.LotSize = lastTrade.LotSize;
       if(CheckPointer(lastTrade) == POINTER_DYNAMIC)
         {
