@@ -80,6 +80,7 @@ void RunTests()
       ++testsPassed;
    totalTests++;
    CleanUpTestTrades();
+
    if (CanDetectPendingTradeNowDeleted())
       ++testsPassed;
    totalTests++;
@@ -136,7 +137,14 @@ void RunTests()
          totalTests++;
            
      }
+   CleanUpTestTrades();   
    
+   if(CanRetrieveSavedTrade()) testsPassed++;
+   totalTests++;
+   CleanUpTestTrades();
+   if(CanDetectMultiplePendingTradesWithFollowOn()) ++testsPassed;
+   totalTests++;
+   CleanUpTestTrades();
 
    Print("Completed tests. ", testsPassed, " of ", totalTests, " passed.");
    
@@ -568,6 +576,57 @@ bool HandlingContinuingActiveTradeDoesNotInvokeClosedTradeProcessing()
    OnTick();
    return Assert(EntryArrowDoesNotExist(Prefix+"Exit"), "Exit arrow was created for continuing active trade");
 }
+
+bool CanRetrieveSavedTrade()
+{
+   string testFileName = "TestFileName.txt";
+   int fileHandle = FileOpen(testFileName, FILE_ANSI | FILE_TXT | FILE_READ);
+   if(fileHandle != -1) //If it exists, delete it so we can start fresh
+     {
+      FileClose(fileHandle);
+      FileDelete(testFileName);
+     }
+   FakeBroker * testBroker = broker;
+   Position * saveTrade = testBroker.OrdersToReturn[0];
+   saveTrade.OrderClosed = 0;
+   SaveTradeToFile(testFileName, saveTrade);
+   
+   //Now see if we can read it
+   ReadOldTrades(testFileName);
+   //if(CheckPointer(saveTrade) == POINTER_DYNAMIC) delete saveTrade;
+   // Do
+  
+   return Assert(totalActiveTrades == 1, "No active trades returned");
+   
+   
+}
+
+bool CanDetectMultiplePendingTradesWithFollowOn()
+{
+   Print("Beginning CanDetectMultiplePendingTradesWithFollowOn");
+   FakeBroker *testBroker = broker;
+   InitializeTradeArrays();
+   ClearGlobalVariables();
+   string gvName = GVPrefix + "1LastOrderId";
+   GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[0].TicketId);
+   testBroker.OrdersToReturn[0].OrderType = OP_SELLLIMIT;
+   gvName = GVPrefix + "2LastOrderId";
+   GlobalVariableSet(gvName, (double) testBroker.OrdersToReturn[1].TicketId);
+   testBroker.OrdersToReturn[1].OrderType = OP_BUYLIMIT;
+   OnTick();
+   
+   if (!Assert(totalActiveTrades == 2, "Number of active trades is not 2")) return false;
+   if(!Assert(totalDeletedTrades == 0, "Number of Deleted Trades is not 0")) return false;
+   if (!Assert(activeTradesLastTick[0].IsPending, "IsPending for first trade is not true")) return false;
+   
+   if(!Assert(activeTradesLastTick[1].IsPending, "IsPending for second trade is not true")) return false;
+   //Now call OnTick() one more time and make sure counts remain the same
+   OnTick();
+   if (!Assert(totalActiveTrades == 2, "Number of active trades is not 2 after followon Tick")) return false;
+   return(Assert(totalDeletedTrades == 0, "Number of Deleted Trades is not 0 after followon Tick"));
+   
+}
+
 bool EntryArrowDoesNotExist(string objectNameToMatch)
 {
  
@@ -598,8 +657,10 @@ void CleanUpTestTrades()
    for(int ix=0;ix < ArraySize(activeTradesLastTick);ix++)
      {
       if (CheckPointer(activeTradesLastTick[ix]) == POINTER_DYNAMIC) delete activeTradesLastTick[ix];
+      activeTradesLastTick[ix] = NULL;
      }
    if (CheckPointer(activeTrade) == POINTER_DYNAMIC) delete activeTrade;
+   totalActiveTrades = 0;
 }
 
 void ClearGlobalVariables() // Set up the test condition that there are no new orders
