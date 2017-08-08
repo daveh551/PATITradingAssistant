@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.32"
+#property version   "0.33"
 #property strict
 #property indicator_chart_window
 #include <stdlib.mqh>
@@ -16,7 +16,7 @@
 
 string Title="New Trade Indicator"; 
 string Prefix="NTI_";
-string Version="v0.32";
+string Version="v0.33";
 
 
 string TextFont="Verdana";
@@ -29,6 +29,10 @@ bool HeartBeat = true;
 
 extern bool Testing = false;
 extern int PairOffsetWithinSymbol = 0;
+extern bool ScanAllTradesEveryTick = true; 
+//Two times when this needs to be true - 
+// a) when using a broker such as OANDA that creates a new trade/new tradeID when triggering a pending order
+// b) when using the Draw Range Lines together with the SetPendingOrdersOnRanges option
 
 Broker *broker;
 int numbOpenOrders;
@@ -90,7 +94,7 @@ void OnTimer()
       int openOrdersThisTime = broker.GetNumberOfOrders();
       GlobalVariableSet(GVNumbOpenOrders, (double) openOrdersThisTime);
       GlobalVariableSet(GVLastCheck, (double) (int) TimeLocal());
-      if (openOrdersThisTime != numbOpenOrders)
+      if (ScanAllTradesEveryTick || (openOrdersThisTime != numbOpenOrders))
       {
          Position * existingOrderId[];
          ArrayCopy(existingOrderId, trades);
