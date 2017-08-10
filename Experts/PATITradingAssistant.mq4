@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.34beta4";
+string Version="v0.34";
 string NTIPrefix = "NTI_";
 int DFVersion = 2;
 
@@ -75,6 +75,7 @@ extern double MarginForPendingRangeOrders = 1.0;
 extern color RangeLinesColor = Yellow;
 extern bool CancelPendingTrades = true;
 extern bool MakeTickVisible = false;
+extern bool CaptureScreenShotsInFiles = true;
 
 
 const double  GVUNINIT= -99999999;
@@ -113,6 +114,7 @@ double _marginForPendingRangeOrders;
 color _rangeLinesColor;
 bool _cancelPendingTrades;
 bool _makeTickVisible;
+bool _captureScreenShotsInFiles;
 
 
 bool alertedThisBar = false;
@@ -496,6 +498,7 @@ void CopyInitialConfigVariables()
    _rangeLinesColor = RangeLinesColor;
    _cancelPendingTrades = CancelPendingTrades;
    _makeTickVisible = MakeTickVisible;
+   _captureScreenShotsInFiles = CaptureScreenShotsInFiles;
 
 }
 
@@ -652,6 +655,11 @@ void ApplyConfiguration(string fileName)
                {
                   _cancelPendingTrades = (bool) StringToInteger(value);
                }
+        else if (var == "CaptureScreenShotsInFiles")
+               {
+                  _captureScreenShotsInFiles = (bool) StringToInteger(value);
+               }
+        
         }
               
       }
@@ -696,6 +704,7 @@ void SaveConfigurationFile()
    FileWriteString(fileHandle, "MarginForPendingRangeOrders: " + DoubleToString(_marginForPendingRangeOrders, 1) + "\r\n");
    FileWriteString(fileHandle, "RangeLinesColor: " + (string) _rangeLinesColor + "\r\n");
    FileWriteString(fileHandle, "CancelPendingTrades: " + IntegerToString((int) _cancelPendingTrades) + "\r\n");
+   FileWriteString(fileHandle, "CaptureScreenShotsInFiles: " + IntegerToString((int) _captureScreenShotsInFiles) + "\r\n");
 
 
    
@@ -734,6 +743,7 @@ void PrintConfigValues()
    Print("MarginForPendingRangeOrders: " + DoubleToString( _marginForPendingRangeOrders, 1) + "\r\n");
    Print("RangeLinesColor: " + (string) _adjustStopOnTriggeredPendingOrders + "\r\n");
    Print("CancelPendingTrades: " + IntegerToString((int) _cancelPendingTrades) + "\r\n");
+   Print("CaptureScreenShotsInFiles: " + IntegerToString((int) _captureScreenShotsInFiles) + "\r\n");   
 }
 
    void DrawRangeButton()
@@ -977,22 +987,8 @@ void HandleTradeEntry(bool wasPending, bool savedTrade = false)
       ObjectSetInteger(0, objectName, OBJPROP_ARROWCODE, 4);
       ObjectSetInteger(0, objectName, OBJPROP_COLOR, Red);
    }
-   if(!savedTrade)
-     {
-      int xPixels = ChartWidthInPixels();
-      int yPixels = ChartHeightInPixelsGet();
-      ChartForegroundSet(0);
-      string fileName= TimeToStr(TimeCurrent(), TIME_DATE | TIME_MINUTES) +
-          "_" + Symbol();
-      StringReplace(fileName, ":", "_");
-      fileName +=  (activeTrade.OrderType == OP_BUY)? (" L" +IntegerToString((long) longTradeNumberForDay)): (" S" + IntegerToString((long) shortTradeNumberForDay));
-      fileName += ".png";
-      if(DEBUG_ORDER)
-        {
-          Print("Capturing Screen shot into " + fileName );
-        }
-      ChartScreenShot(0, fileName, xPixels, yPixels);
-     }
+   if(!savedTrade) CaptureScreenShot();
+
 }
 
 void SetStopAndProfitLevels(Position * trade, bool wasPending)
@@ -1192,6 +1188,24 @@ void HandleDeletedTrade()
          delete activeTrade;
       activeTrade = NULL;
 
+}
+
+void CaptureScreenShot()
+{
+   if(!_captureScreenShotsInFiles) return;
+      int xPixels = ChartWidthInPixels();
+      int yPixels = ChartHeightInPixelsGet();
+      ChartForegroundSet(0);
+      string fileName= TimeToStr(TimeCurrent(), TIME_DATE | TIME_MINUTES) +
+          "_" + Symbol();
+      StringReplace(fileName, ":", "_");
+      fileName +=  (activeTrade.OrderType == OP_BUY)? (" L" +IntegerToString((long) longTradeNumberForDay)): (" S" + IntegerToString((long) shortTradeNumberForDay));
+      fileName += ".png";
+      if(DEBUG_ORDER)
+        {
+          Print("Capturing Screen shot into " + fileName );
+        }
+      ChartScreenShot(0, fileName, xPixels, yPixels);
 }
 int CalculateStop(string symbol)
 {
