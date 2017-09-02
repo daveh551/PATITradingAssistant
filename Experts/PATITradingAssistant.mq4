@@ -43,38 +43,47 @@ int rngButtonHeight = 18;
 int rngButtonWidth = 150;
 string rngButtonName = Prefix + "DrawRangeBtn";
 
+//Configuration variables
+extern string General = "===General===";
 extern bool Testing = false;
 extern int PairOffsetWithinSymbol = 0;
+extern bool AlertOnTrade=true;
+extern bool MakeTickVisible = false;
+extern bool SaveConfiguration = false;
+extern string ConfigureStops = "===Configure Stop Loss Levels===";
 extern int DefaultStopPips = 12;
 extern string ExceptionPairs = "EURUSD/8;AUDUSD,GBPUSD,EURJPY,USDJPY,USDCAD/10";
-extern bool UseNextLevelTPRule = true;
-extern bool ShowNoEntryZone = true;
+extern bool SendSLandTPToBroker = true;
+extern bool SetLimitsOnPendingOrders = true;
+extern bool AdjustStopOnTriggeredPendingOrders = true;
+extern string ConfigureDisplay = "===Configure Trade Display===";
 extern bool ShowEntry = true;
 extern bool ShowInitialStop = true;
 extern bool ShowExit = true;
 extern bool ShowTradeTrendLine = true;
-extern bool SendSLandTPToBroker = true;
-extern bool AlertOnTrade=true;
-extern double MinNoEntryPad = 15;
 extern int EntryIndicator = 2;
-extern double MinRewardRatio = 1.5;
-extern color NoEntryZoneColor = DarkGray;
 extern color WinningExitColor = Green;
 extern color LosingExitColor = Red;
 extern color TradeTrendLineColor = Blue;
-extern bool SaveConfiguration = false;
-extern int EndOfDayOffsetHours = 0;
-extern bool SetLimitsOnPendingOrders = true;
-extern bool AdjustStopOnTriggeredPendingOrders = true;
-extern int BeginningOfDayOffsetHours = 0;
+extern string ConfigureNoEntryZone = "===Configure No-Entry Zone===";
+extern bool ShowNoEntryZone = true;
+extern color NoEntryZoneColor = DarkGray;
+extern double MinNoEntryPad = 15;
+extern string ConfigureTP = "===Configure Take Profit Levels===";
+extern bool UseNextLevelTPRule = true;
+extern double MinRewardRatio = 1.5;
+extern string ConfigureRangeLines = "===Configure Draw Range Lines feature===";
 extern bool ShowDrawRangeButton = true;
+extern color RangeLinesColor = Yellow;
 extern bool SetPendingOrdersOnRanges = false;
+extern double MarginForPendingRangeOrders = 1.0;
 extern bool AccountForSpreadOnPendingBuyOrders = true;
 extern double PendingLotSize = 0.0;
-extern double MarginForPendingRangeOrders = 1.0;
-extern color RangeLinesColor = Yellow;
 extern bool CancelPendingTrades = true;
-extern bool MakeTickVisible = false;
+extern string TimingRelatedVariables = "===Timing Related Configuration===";
+extern int EndOfDayOffsetHours = 0;
+extern int BeginningOfDayOffsetHours = 0;
+extern string ConfigureScreenShotCapture = "===Configure Screen Shot Capture===";
 extern bool CaptureScreenShotsInFiles = true;
 
 
@@ -797,10 +806,7 @@ void PrintConfigValues()
          //Same thing with deleted trade array
          for(int jx=totalDeletedTrades-1;jx>=0;jx--)
            {
-              //if(!ValidateDeletedTrades())
-              //{
-              //   Alert("DeletedTrades array invalid in deletedTrades loop");
-              // }
+             
             if(DEBUG_ORDER)  PrintFormat("ix=%i, tradeId = %i, jx=%i, deleteTradeId = %i",
                   ix, tradeId, jx, deletedTrades[jx].TicketId);
             if(tradeId == deletedTrades[jx].TicketId)
@@ -942,7 +948,8 @@ void HandleTradeEntry(bool wasPending, bool savedTrade = false)
       if(!savedTrade &&  !activeTrade.IsPending)
         {
          if (_alertOnTrade)
-            Alert("New Trade Entered for " + normalizedSymbol + ". Id = " + IntegerToString(activeTrade.TicketId) +". OpenPrice = " + DoubleToStr(activeTrade.OpenPrice, 5));
+            Alert("Entered " + normalizedSymbol + " " + (activeTrade.OrderType == OP_BUY ? "long" : "short") +". Id = " + 
+            IntegerToString(activeTrade.TicketId) +". OpenPrice = " + DoubleToStr(activeTrade.OpenPrice, 5));
          SaveTradeToFile(saveFileName, activeTrade);
         }
    if(_cancelPendingTrades && !savedTrade)
@@ -1053,7 +1060,8 @@ void HandleClosedTrade(bool savedTrade = false)
          if (FiveDig) profit *= .1;
          if(_alertOnTrade)
            {
-               Alert("Old Trade " + IntegerToString(activeTrade.TicketId) + " (" + activeTrade.Symbol +") closed. (" + DoubleToStr(profit, 1) + ")");            
+               Alert("Closed " + IntegerToString (activeTrade.TicketId) + " (" + activeTrade.Symbol + " " + (activeTrade.OrderType == OP_BUY ? "long" : "short") +
+               ") (" + DoubleToStr(profit, 1) + ")");            
            }
    
          Print("Handling closed trade.  OrderType= " + IntegerToString(activeTrade.OrderType));
@@ -1297,9 +1305,9 @@ void DeleteSaveFile()
    if (FileIsExist(saveFileName))
       FileDelete(saveFileName);
 }
-void SaveTradeToFile(string saveFileName, Position *trade)
+void SaveTradeToFile(string fileName, Position *trade)
 {
-   int fileHandle = FileOpen(saveFileName, FILE_TXT | FILE_ANSI | FILE_WRITE | FILE_READ);
+   int fileHandle = FileOpen(fileName, FILE_TXT | FILE_ANSI | FILE_WRITE | FILE_READ);
    if (fileHandle != -1)
    {
       FileSeek(fileHandle, 0, SEEK_END);
@@ -1339,10 +1347,10 @@ void UpdateGV()
 
 }
 
-void ReadOldTrades(string saveFileName)
+void ReadOldTrades(string fileName)
 {
    
-   int fileHandle = FileOpen(saveFileName, FILE_ANSI | FILE_TXT | FILE_READ);
+   int fileHandle = FileOpen(fileName, FILE_ANSI | FILE_TXT | FILE_READ);
    if (fileHandle != -1)
    {
       string line = FileReadString(fileHandle);
@@ -1358,20 +1366,20 @@ void ReadOldTrades(string saveFileName)
                line = FileReadString(fileHandle);
                StringReplace(line, "Trade ID: ", "");
                int tradeId = StrToInteger(line);
-               double stopLoss = 0.0;
+               double sl = 0.0;
                int stopLossPos = StringFind(line, "Initial Stop");
                if(stopLossPos != -1)
                {
                   line = StringSubstr(line, stopLossPos);
                   StringReplace(line, "Intial Stop: ", "");
-                  stopLoss = StrToDouble(line);
+                  sl = StrToDouble(line);
                }
                lastTradeId = tradeId;
                Position * lastTrade = broker.GetTrade(lastTradeId);
                AddActiveTrade(lastTrade);
               
-               PrintFormat("Calling HandleNewEntry for saved trade %i, with stop loss %f", tradeId, stopLoss);
-               HandleNewEntry(tradeId,true, stopLoss);
+               PrintFormat("Calling HandleNewEntry for saved trade %i, with stop loss %f", tradeId, sl);
+               HandleNewEntry(tradeId,true, sl);
               
                
                if (activeTrade.OrderClosed != 0)
