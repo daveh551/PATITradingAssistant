@@ -1,3 +1,15 @@
+#RELEASE NOTES for v 0.34 9/2/2017
+
+This enhancement adds a new feature that, on command, will draw horizontal line at the High and Low of the day (HOD/LOD) as an aid in recognizing and responding to Range Breakouts (RBO's).  It also draws a Right Price Arrow to the right of the line giving the range. The HOD/LOD calculation takes into account a new configuration variable, BeginningOfDayOffsetHours, to offset the start of day from your server's clock.  The calculation extends up to BUT NOT INCLUDING the current open candle.
+
+Computation and display of the range lines takes place when a new button labeled "Draw Range Lines", in the lower left of the chart, is clicked.
+
+When the button is clicked, there is also the option, via configuration variable "SetPendingOrdersOnRanges", to set pending orders at or just outside the range limits.
+
+The release also resolves an issue recently discovered with some brokers (notably, in my experience, OANDA) that handle a triggered pending order by canceling the pending order and creating a new order, with a new trade id, as a market order. Because the trade id is different, the trading assistant was not following the relationship to the original pending order, and was failing to, first of all, even recognize the new order, and secondly, to adjust the stops from the pending order if the active order was entered at a slightly different price (due to market slippage).  This required a change to the NewTradeIndicator to scan the entire array of orders on each clock tick, and there is a new configuration variable, "ScanAllTradesEveryTick" in NewTradeIndicator version 0.33 to enable this behavior.  With this configuration variable set false, it will only scan for new trade id's when there is a change in the total number of trades open orders. This variable should also be set true if you use the SetPendingOrdersOnRanges feature described above.
+
+Finally, this release allows automatically capturing a screen shot of the chart at the moment a new trade goes active.  The screen shot is a PNG file stored in the "Files" folder (reached via the File->Open Data Folder menu item, then navigating to MQL4\Files).  The file has a filename representing the calendar day and time of day (to the minute), followed by the pair symbol, an 'L' for a long trade or an 'S' for a short trade, and a sequence number of that type trade for that pair on that day. (E.g., "2017.06.08 09_21_USDJPY L1" )  This feature is enabled by the boolean "CaptureScreenShotsInFiles" configuration variable.
+
 #RELEASE NOTES for v 0.33 12/23/2016
 
 The enhancement in this version is that, if selected, stops and take profit limits will be added to Pending Orders as well as active orders.
@@ -52,7 +64,7 @@ All these actions are configurable.
 
 The Trading Assistant has 2 components:
 
-1. The "New Trade Indicator" (NTI)  which is an indicator (not expert advisor) that needs to be run on one and only one chart in your MT4 platform.
+1. The "New Trade Indicator" (NTI)  which is an indicator (not expert advisor) that needs to be run on ONE AND ONLY ONE chart in your MT4 platform.
 It works off a one-second interval timer, not off ticks, so which chart it's placed on doesn't matter.  Its function is to monitor for new trades and closed trade across the entire account.
 2. The PATITradingAssistant (PTA) which is an expert advisor that needs to run on each pair that you trade.  
 It will monitor the global variables set by NTI and detect when you have entered a new trade for that pair.  It will then execute the configured actions. 
@@ -64,14 +76,14 @@ To install the Trading assistant,
 2. Click on File -> Open Data Folder menu item, then open the MQL4 directory under your platform specific data directory
 3. Copy the NewTradeIndicator.ex4 to the MQL4/Indicators directory.
 4. Copy the PATITradingAssistant.ex4 to the MQL/Experts directory.  
-5. Restart MT4, and drag the NewTradeIndicator indicator onto any one chart, and drag the PATITradingAssistant expert onto each chart that you intend to trade.
+5. Restart MT4, open the Navigator under the View menu, and drag the NewTradeIndicator from the Indicators folder onto any ONE chart, and drag the PATITradingAssistant from the Experts folder onto each chart that you intend to trade.
 6. In the Expert configuration dialog box that comes up for the PATITradingAssistant, click the Common tab, and make sure that "Allow Live Trading" is checked. (Alternatively, go into the Tools -> Options menu of the MetaTrader4 platform, navigate to the Expert Advisors tab, and check the "Allow Automated Trading" box.  This will then apply to all Expert Advisors added after that point.) Also verify that "Auto Trading" button in the toolbar of the MetaTrader4 platform has been clicked. (It should show a green dot in the icon, not a red one.)
 
 # Configuration
 
 ## NewTradeIndicator:
 
-There are two configuration variables in the NewTradeIndicator: Testing and PairOffsetWithinSymbol.
+There are three configuration variables in the NewTradeIndicator: Testing and PairOffsetWithinSymbol.
 
 <dl>
 <dt>Testing</dt> <dd>is a variable that allows development-level testing.  It should be set to false.  Setting it to true will keep the indicator from completing its initialization, and execution will terminate immediately after completing the tests. The default value is false.</dd>
@@ -79,22 +91,42 @@ There are two configuration variables in the NewTradeIndicator: Testing and Pair
 <dt>PairOffsetWithinSymbol</dt>
 <dd> should normally be 0, unless your broker adds a prefix to the symbol name to indicate a special account designation.  Most brokers simply return the pair name (e.g. "EURUSD") as the symbol, but some either prepend or append some designator to the pair name to indicate something characteristic of the account or trade (e.g. 'm' to denote a mini account).  If such a designator is post-fixed to the symbol (e.g. "EURUSDm"), it gets handled automatically, but if it is prefixed (e.g., "mEURUSD", we need to know how many characters to take off the front of the symbol in order to get the pair name. The default value is 0.</dd>
 
+<dt>ScanAllSymbolsOnEachTick</dt>
+<dd> If set to false, the list of open orders is retrieved from the server only if there has been a change in the total number of open orders since the last clock tick.  This reduces the amount of network traffic to and from the server. However, it makes you vulnerable to missing a trade if there is a closed or canceled trade and an offsetting new trade in the same clock tick (one second).  If set to true, the indicator will get the entire list of open trade ids on each clock tick. (See release notes for v0.34. The default is true.
+</dd>
 </dl>
+
+
 ## PATITradingAssistant:
 
-There are numerous configuration variable for the Trading Assistant in order to allow configuration of the different actions according to your preferences.
+There are numerous configuration variable for the Trading Assistant in order to allow configuration of the different actions according to your preferences. In v.0.34, the variables were re-ordered to place them in logical groupings.  The order they are presented here reflects the new order.
+### General
+
 <dl>
 <dt>Testing</dt> <dd>Same function and description as under NewTradeIndicator.</dd>
 
 <dt>PairOffsetWithinSymbol</dt> <dd>Same function and description as under NewTradeIndicator.</dd>
 
+<dt>AlertOnTrade</dt> <dd>this is a boolean variable that determines whether to raise an alert on detecting a trade entry and trade exit. The alert was originally put in as a debugging feature during development, but I decided I rather liked it as confirmation. Note also that the message displayed in the alert on trade exit includes the actual gain/loss in pips.  I recognized that it may get annoying though, so you have the capability to turn it off.  Default value is true.</dd>
+
+<dt>MakeTickVisible</dt> <dd>This boolean variable can normally be ignored. It aids in debugging by displaying a message on each tick that is received to confirm that the Trading Assistant is still operating. Default value is false.</dd>
+
+<dt>SaveConfiguration</dt> <dd>I have often found, when using an EA, that there are a few values that I consistently want to set different from the default values.  Unless I have access to the source code (and want to go to the trouble of rebuilding the EA), I have no choice but to enter those values every time I start the EA. Setting this variable to true will copy out each of the configuration variables to a file in the Terminal's Files area.  On subsequent startups, this configuration file will be read and those values used in place of whatever is set in the settings dialog. If you want to start without using the configuration file after you have saved it, simply go into the Files area (by using the File -> Open Data Folder menu item, then navigating down the MQL\Files.  The file is named "PTA_&lt;symbol>_Configuration.txt".  You can delete that file (in which case you will have to save the configuration again if you want to use it), or rename it to something else (in which case you can rename it back the next time you want to use it). Since the file is an editable text file, you can also edit and change the values in the file itself.</dd>
+
+### Configure Stop Loss Levels
+
 <dt>DefaultStopPips</dt> <dd> For any pair not listed in the Exceptions variable (see below) this variable gives the number of pips away from the entry that the stop loss will be set. Default value is 12.</dd>
 
-<dt>Exceptions</dt>  <dd>This is a string variable that lists any pairs that have a different stop loss from the Default.  The format is a list of one or more pair names separated by commas, then followed by forward slash ('/') and the number of pips that becomes the stop loss for that pair.  This can then be followed by a semicolon and another list and value.  The default value is  "EURUSD/8;AUDUSD,GBPUSD,EURJPY,USDJPY,USDCAD/10", which will set an 8 pip stop for the EURUSD, a 10 pip stop for the AUDUSD, GBPUSD, EURJPY, USDJPY, and USDCAD.  All other pairs will use he value of DefaultStopPips (12).  This is in keeping with the current PATI rules. If you choose to trade other pairs, or the set of pairs traded by PATI is modified after the trading assistant is released, you may want to modify this value.</dd>
+<dt>Exceptions</dt>  <dd>This is a string variable that lists any pairs that have a different stop loss from the Default.  The format is a list of one or more pair names separated by commas, then followed by a forward slash ('/') and the number of pips that becomes the stop loss for that pair or pairs.  This can then be followed by a semicolon and another list and value.  The default value is  "EURUSD/8;AUDUSD,GBPUSD,EURJPY,USDJPY,USDCAD/10", which will set an 8 pip stop for the EURUSD, a 10 pip stop for the AUDUSD, GBPUSD, EURJPY, USDJPY, and USDCAD.  All other pairs will use he value of DefaultStopPips (12).  This is in keeping with the current PATI rules at the time of the first implementation of the PATI Trading Assistant. If you choose to trade other pairs, or the set of pairs traded by PATI is modified after the trading assistant is released, you may want to modify this value.</dd>
 
-<dt>UseNextLevelTPRule</dt> <dd>this is a boolean (true/false) variable that determines whether or not to set a Take Profit (TP) that implements the "Exit at the next level" PATI objective take profit setting. (See also MinRewardRatio.) Default value is true.</dd>
+<dt>SendSLandTPToBroker</dt> <dd>this is a boolean variable that determines whether or not to actually send the calculated values for stop loss and take profit to the broker automatically. If true, an order modification is sent with the calculated values using the "OrderReliable" package that will detect retryable errors and retry up to ten times if an error occurs.  The default value is true.</dd>
 
-<dt>ShowNoEntryZone</dt> <dd>this is a boolean variable that determines whether or not to display the "NoEntry" rectangle following an exit that loses pips.  The NoExitZone will be a rectangle extending from the current time to the end of the day, and from the "next level" above and below the trade entry. (See also MinNoEntryPad and NoEntryZoneColor.) Default value is true.</dd>
+<dt>SetLimitsOnPendingOrders</dt> <dd> Added in version 0.33, this boolean variable determines whether or not the trading assistant will modify a pending order by adding stop loss and take profit limits to the order.  If false, the order is left unmodified.  Default is true. </dd>
+
+<dt>AdjustStopOnTriggeredPendingOrders</dt> <dd>Added in version 0.33. When a pending order is entered, stop loss and take profit points are calculated based on the trigger price of the pending order.  When the order is actually triggered, the entry price may be different, sometimes substantially different, than the trigger price due to slippage.  If this variable is true, the trading assistant will modify the order and send new stop loss and take profit points based on the actual entry price. Default is true.
+
+
+### Configure Trade Display
 
 <dt>ShowEntry</dt> <dd>this is a boolean variable that determines whether or not to show an arrow indicator at the entry point to a trade.  The arrow will be blue. (See also EntryIndicator.) The default value is true.</dd>
 
@@ -104,31 +136,49 @@ There are numerous configuration variable for the Trading Assistant in order to 
 
 <dt>ShowTradeTrendLine</dt> <dd>this is a boolean variable that determines whether or not draw a trendline from the entry point to the exit point upon exiting a trade. (See also TradeTrendLineColor.) The default is true.</dd>
 
-<dt>SendSLandTPToBroker</dt> <dd>this is a boolean variable that determines whether or not to actually send the calculated values for stop loss and takeprofit to the broker automatically. If true, an order modification is sent with the calculated values using the "OrderReliable" package that will detect retryable errors and retry up to ten times if an error occurs.  The default value is true.</dd>
+<dt>EntryIndicator</dt> <dd>This is an integer variable that gives the MQL4 arrow code to use for entry (and exit by implication) arrows, if used. The only values that I have found that make sense are 2 (the default), and 5. 2 will draw a small right-facing arrow at the entry, while 5 will draw "Left Price Label" arrow with the numeric price shown in the arrow.  For the exit arrow, the next higher arrow code is used (3 or 6). 3 will draw a small left-facing arrow to the right of the exit point, while 6 will draw a "Right Price Label" arrow with the exit price shown in the arrow box. If ShowEntry and/or ShowExit are false, this value has no effect.The default value is 2.</dd>
 
-<dt>AlertOnTrade</dt> <dd>this is a boolean variable that determines whether to raise an alert on detecting a trade entry and trade exit. The alert was originally put in as a debugging feature during development, but I decided I rather liked it as confirmation. Note also that the message displayed in the alert on trade exit includes the actual gain/loss in pips.  I recognized that it may get annoying though, so you have the capability to turn it off.  Default value is true.</dd>
+<dt>WinningExitColor</dt> <dd>This is a color variable that sets the color that the Exit trade indicator will be drawn in if the trade resulted in positive pips.  The default is Green.  If ShowExit is false, the value has no effect.</dd>
 
-<dt>MinNoEntryPad</dt> <dd>This a double value that represents the minimum distance in pips that the entry price has to be away from the "next level" when establishing the "NoEntryZone".  If the entry price is closer than that to a level, the "next level" chosen for the NoEntry rectangle will be one level beyond that. As an example, if you have a losing trade in the EURUSD with an entry price of 1.0612, which is 8 pips from the next level up of 1.0620, and the MinNoEntryPad is set at the default of 15, then the top of the NoEntry rectangle will not be at 1.0620, but at the next level, 1.0650.  Default value is 15 pips. If ShowNoEntryZone is false, this value has no effect.</dd>
+<dt>LosingExitColor</dt> <dd>This is a color variable that sets the color that the Exit trade indicator will be drawn in if the trade resulted in negative pips.  The default is Red. If ShowExit is false, the value has no effect.</dd>
 
-<dt>EntryIndicator</dt> <dd>This is an integer variable that gives the MQL4 arrow code to use for entry (and exit by implication) arrows, if used. The only values that I have found that make sense are 2 (the default), and 5. 2 will draw a small right-facing arrow at the entry, while 5 will draw "Left Price Label" arrow with the numeric price shown in the arrow.  For the exit arrow, the next higher arrow code is used (3 or 6). 3 will draw a small left-facing arrow to the right of the exit point, while 6 will draw a "Right Price Label" arrow with the exit price shown in the arrow box. ShowEntry and/or ShowExit are false, this value has no effect.The default value is 2</dd>
+<dt>TradeTrendLineColor</dt> <dd>This is a color variable that sets the color that the TradeTrendLine will be drawn in. The default is Blue.  If ShowTradeTrendLine is false, this value has no effect.</dd>
 
-<dt>MinRewardRatio</dt> <dd>When setting the "Next Level" take profit price, it makes no sense to set it so close to the entry that there is not sufficient reward-to-risk ratio.  For example, if you have entered a long trade on the EURUSD at 1.0618, technically, the next level would be 1.0620.  But that would only result in a 2 pip profit, compared to a 8 pip risk.  That is hardly the recipe for a profitable strategy.  This variable takes the stop loss pips that is used for the pair, multiplies that by this factor, and sets that as the minimum take profit target. If the "next level" is less than this value, it sets the TP target one more level up.  Thus, in our example, since EURUSD uses an 8 pip stop (by default), using the default MinRewardRatio, we would be looking for minimum TP target of 12 pips, 1.0630.  The next level above this is 1.0650, which is where the TP would be set. The default value is 1.5. If UseNextLevelTPRule is false, this value has no effect.</dd>
+### Configure No-Entry Zone
+
+<dt>ShowNoEntryZone</dt> <dd>this is a boolean variable that determines whether or not to display the "NoEntry" rectangle following an exit that loses pips.  The NoExitZone will be a rectangle extending from the current time to the end of the day, and from the "next level" above and below the trade entry. (See also MinNoEntryPad and NoEntryZoneColor.) Default value is true.</dd>
 
 <dt>NoEntryZoneColor</dt> <dd>This is a color variable that sets the color that the NoEntryZone will be drawn in.  The default is DarkGray. If ShowNoEntryZone is false, this value has no effect.</dd>
 
-<dt>WinningExitColor</dt> <dd>This is a color variable that set the color that tne Exit trade indicator will be drawn in if the trade resulted in positive pips.  The default is Green.  If ShowExit is false, the value has no effect.</dd>
+<dt>MinNoEntryPad</dt> <dd>This a double value that represents the minimum distance in pips that the entry price has to be away from the "next level" when establishing the "NoEntryZone".  If the entry price is closer than that to a level, the "next level" chosen for the NoEntry rectangle will be one level beyond that. As an example, if you have a losing trade in the EURUSD with an entry price of 1.0612, which is 8 pips from the next level up of 1.0620, and the MinNoEntryPad is set at the default of 15, then the top of the NoEntry rectangle will not be at 1.0620, but at the next level, 1.0650.  Default value is 15 pips. If ShowNoEntryZone is false, this value has no effect.</dd>
 
-<dt>LosingExitColor</dt> <dd>This is a color variable that sets the color that the Exit trade indicator will be drawn in fi the trade resulted in negative pips.  The default is Red. If ShowExit is false, the value has no effect.</dd>
+### Configure Take Profit Levels
 
-<dt>TradeTrendLineColor</dt> <dd>This is a color variable that set the color that the TradeTrendLine will be drawn in. The default is Blue.  If ShowTradeTrendLine is false, this value has no effect.</dd>
+<dt>UseNextLevelTPRule</dt> <dd>this is a boolean (true/false) variable that determines whether or not to set a Take Profit (TP) that implements the "Exit at the next level" PATI objective take profit setting. (See also MinRewardRatio.) Default value is true.</dd>
 
-<dt>SaveConfiguration</dt> <dd>I have often found, when using an EA, that there are a few values that I consistently want to set different from the default values.  Unless I have access to the source code (and want to go to the trouble of rebuilding the EA), I have no choice but to enter those values every time I start the EA. Setting this variable to true will copy out each of the configuration variables to a file in the Terminal's Files area.  On subsequent startups, this configuration file will be read and those values used in place of whatever is set in the settings dialog. If you want to start without using the configuration file after you have saved it, simply go into the Files area (by using the File -> Open Data Folder menu item, then navigating down the MQL\Files.  The file is named "PTA_&lt;symbol>_Configuration.txt".  You can delete that file (in which case you will have to save the configuration again if you want to use it), or rename it to something else (in which case you can rename it back the next time you want to use it). Since the file is an editable text file, you can also edit and change the values in the file itself.</dd>
+<dt>MinRewardRatio</dt> <dd>When setting the "Next Level" take profit price, it makes no sense to set it so close to the entry that there is not sufficient reward-to-risk ratio.  For example, if you have entered a long trade on the EURUSD at 1.0618, technically, the next level would be 1.0620.  But that would only result in a 2 pip profit, compared to a 8 pip risk.  That is hardly the recipe for a profitable strategy.  This variable takes the stop loss pips that is used for the pair, multiplies that by this factor, and sets that as the minimum take profit target. If the "next level" is less than this value, it sets the TP target one more level up.  Thus, in our example, since EURUSD uses an 8 pip stop (by default), using the default MinRewardRatio, we would be looking for minimum TP target of 12 pips, 1.0630.  The next level above this is 1.0650, which is where the TP would be set. The default value is 1.5. If UseNextLevelTPRule is false, this value has no effect.</dd>
 
-<dt>EndOfDayOffsetHours</dt> <dd>Added in version 0.33, this variable alters the time at which the trading assistant will "clean up" the various graphic elements it may have added to the chart (arrows, boxes, trendlines, etc.)  It also adjusts the right edge the "No Entry Zone" rectangle if that is in use.</dd>
+### Configure Draw Range Lines feature
 
-<dt>SetLimitsOnPendingOrders</dt> <dd> Added in version 0.33, this boolean variable determines whether or not the trading assistant will modify a pending order by adding stop loss and take profit limits to the order.  If false, the order is left unmodified.  Default is true. </dd>
+<dt>ShowDrawRangeButton</dt> <dd>If true, the button controlling the Draw Range Lines feature is drawn in the lower left corner of the chart. If false, the button is not drawn, and the feature is inaccessible. Default value is true.</dd>
 
-<dt>AdjustStopOnTriggeredPendingOrders</dt> <dd>Added in version 0.33. When a pending order is entered, stop loss and take profit points are calculated based on the trigger price of the pending order.  When the order is actually triggered, the entry price may be different, sometimes substantially different, than the trigger price.  If this variable is true, the trading assistant will modify the order and send new stop loss and take profit points based on the actual entry price. Default is true
+<dt>RangeLinesColor</dt><dd>This color variable sets the color that will be used to draw the high and low range lines. Default value is Yellow.</dd>
+
+<dt>SetPendingOrdersOnRanges</dt><dd> If true, pending orders will be placed at or just outside (see MarginForPendingRangeOrders below) the calculated ranges immediately after the ranges are drawn. At the same time, it will cancel any existing Buy Stop or Sell Stop orders because the newly placed range orders will replace them. In this way, it is safe to simply click the "Draw Range Lines" button again to re-calculate range limits and re-place the corresponding orders without having to first cancel the existing orders. The default value is false.</dd>
+
+<dt>MarginForPendingRangeOrders</dt><dd>If SetPendingOrdersOnRanges is true, this variable determines the number of pips outside the calculated ranges that the pending orders will be placed. This allows you to wait for the price to actually come through the limit, rather than just touching it, before triggering your order.  The value can be set to 0.0 to trigger the order if the limit is touched, and, technically, could be set to a negative number to trigger the order before the limit is reached.  The default value is 1.0.</dd>
+
+<dt>AccountForSpreadOnPendingBuyOrders</dt><dd>If SetPendingOrdersOnRanges is true, this variable determines whether you add the spread to the calculated Buy Stop trigger price at the top of the range. If set false, it would cause the order to be triggered if the Ask price touches the limit (plus the designated margin described above). However, the calculated range is based on the Bid price, so this would result in your order be triggered before the bid price actually reached the limit. Note: the spread is taken into account at the time the pending order is set.  The pending order price is not adjusted for changes in the spread after the order is set. The default value is true.</dd>
+
+<dt>PendingLotSize</dt><dd>If SetPendingOrdersOnRanges is true, this variable determines the number of lots that the pending order will be set for. If the value is 0.0, it will attempt to find the number of lots used on the last order for this pair, and use that.  The default value is 0.0.</dd>
+
+<dt>CancelPendingTrades</dt><dd>If this variable is true, when a pending order is triggered, it will automatically cancel all other pending trades in the same direction, to prevent the possibility of their being triggered and resulting in double execution. This actually applies to all trades, not just those entered as a result of drawing range lines. The default value is true.</dd>
+
+### Timing Related Configuration
+<dt>BeginningOfDayOffsetHours<dt>
+<dd>This variable will offset the beginning of the day from your broker's clock.  This offset is used in calculating the High of the day and Low of the day (HOD/LOD) when drawing range lines = 0 </dd>
+
+<dt>EndOfDayOffsetHours</dt> <dd>Added in version 0.33, this variable alters the time at which the trading assistant will "clean up" the various graphic elements it may have added to the chart (arrows, boxes, trendlines, etc.)  It also adjusts the right edge of the "No Entry Zone" rectangle if that is in use.</dd>
 </dl>
 
 
@@ -143,7 +193,7 @@ In my use, PATI Trading Assistant (PTA) has worked exactly as expected 99% of th
 
 1. ~~Cancel the pending order if it is still open.~~
 
-2. Open the Tools -> Global Variables menu, and locate the variable corresponding to the pair you are trading.  (It will be named "NTI_&lt;symbol>LastOrderId", for example, NTIEURUSDLastOrderId). Double-click the Value column for that variable.
+2. Open the Tools -> Global Variables menu, and locate the variable corresponding to the pair you are trading.  (It will be named "NTI_<symbol>LastOrderId", for example, NTIEURUSDLastOrderId). Double-click the Value column for that variable.
 
 3. Locate the trade in your terminal, and type the Order number for that trade in to the Global Variable value. Hit enter, and PTA should "see" the trade and act on it.
 
@@ -152,3 +202,6 @@ Another consequence of this limitation is that, if you enter add-on orders to an
 The second limitation is based on the design of NTI. In order to reduce network traffic and the load on the CPU, NTI queries the server every second and says, in effect, "How many open orders are there for this account?" As long as that number comes back the same as it was the last time it was asked, then NTI assumes no new orders have been entered or closed. And 99.9% of the time that is true.
 
 However, if it were to happen that you entered a new order in the same second that an open position was closed, then it is possible that the new order might be missed.  I have never seen this happen, but it's theoretically possible.
+
+This limitation is removed in NTI v0.33 when setting the ScanAllSymbolsOnEachTick variable to true, which now comes as the default value. This setting is mandatory when using brokers such as OANDA that replace pending orders when the are triggered (rather than modifying the existing order into an active order), because there now a deleted order (the pending order) and and added order (the replaced active order) in the same instant. It is also recommended if you use the SetPendingOrdersOnRanges feature because it is possible for a net pending order to cancel and replace an existing one in the same instant.
+
