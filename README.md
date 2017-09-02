@@ -1,4 +1,4 @@
-#RELEASE NOTES for v 0.34 9/2/2017
+# RELEASE NOTES for v 0.34 9/2/2017
 
 This enhancement adds a new feature that, on command, will draw horizontal line at the High and Low of the day (HOD/LOD) as an aid in recognizing and responding to Range Breakouts (RBO's).  It also draws a Right Price Arrow to the right of the line giving the range. The HOD/LOD calculation takes into account a new configuration variable, BeginningOfDayOffsetHours, to offset the start of day from your server's clock.  The calculation extends up to BUT NOT INCLUDING the current open candle.
 
@@ -10,7 +10,7 @@ The release also resolves an issue recently discovered with some brokers (notabl
 
 Finally, this release allows automatically capturing a screen shot of the chart at the moment a new trade goes active.  The screen shot is a PNG file stored in the "Files" folder (reached via the File->Open Data Folder menu item, then navigating to MQL4\Files).  The file has a filename representing the calendar day and time of day (to the minute), followed by the pair symbol, an 'L' for a long trade or an 'S' for a short trade, and a sequence number of that type trade for that pair on that day. (E.g., "2017.06.08 09_21_USDJPY L1" )  This feature is enabled by the boolean "CaptureScreenShotsInFiles" configuration variable.
 
-#RELEASE NOTES for v 0.33 12/23/2016
+# RELEASE NOTES for v 0.33 12/23/2016
 
 The enhancement in this version is that, if selected, stops and take profit limits will be added to Pending Orders as well as active orders.
 
@@ -18,7 +18,7 @@ In this way, if you lose the internet connection to your broker after placing yo
 
 Note that the stop loss point and take profit point are set based on the trigger point.  When the order is activated, the stop loss and take profit limit will be adjusted based on the actual entry price. (This behavior is controlled by configuration variables.)
 
-#RELEASE NOTES for v 0.32 11/7/2015
+# RELEASE NOTES for v 0.32 11/7/2015
 This is the first of a series of planned releases that will make some enhancements to the existing PATI Trading Assistant.
 
 The principal enhancement in this version is that the restriction of only one active trade/order per pair is removed.  This is a BREAKING CHANGE, and requires that v0.32 of the NetTradeIndicator be used with version 0.32 of the PATITradingAssistant.
@@ -27,7 +27,7 @@ The motivation is a couple scenarios in which the one active trade restriction c
 	1) If you had a pending trade in place and then entered a market order without first removing the pending trade, the market order would not be recognized.
 	2) The restriction meant that you could not enter two simultaneous pending orders for breakouts at the top and bottom of a range, or at the top and bottom of the "No-Entry Zone".  These situations can now be accommodated with no problems.
 
-#RELEASE NOTES for v 0.31 4/1/2015
+# RELEASE NOTES for v 0.31 4/1/2015
 
 This release fixes a bug in which, if the EA was re-initialized (as by changing the period on a chart, changing parameters, or re-starting the EA) while trades were open trades, it would reset the Stop Loss and Take Profit to calculated values regardless of how they might have been changed.
 
@@ -182,7 +182,7 @@ There are numerous configuration variable for the Trading Assistant in order to 
 </dl>
 
 
-#Limitations
+# Limitations
 
 In my use, PATI Trading Assistant (PTA) has worked exactly as expected 99% of the time. However, there are a couple limitations that you need to understand to avoid some surprises.
 
