@@ -1,0 +1,21 @@
+To install the PATI Trading Assistant from this ZIP file, do the following.
+
+
+1. Open MetaTrader4, and click the File -> Open Data Folder.
+
+2. (Optional Step) If you have an existing version of MetaTrader installed, and want to be cautious, make a backup copy of 
+MQL4\Experts\PATITradingAssistant.ex4 and MQL4\Indicators\NewTradeIndicator.ex4. You can do this by copying those files to 
+another folder, or by renaming them.
+
+3. Double click on this ZIP folder to open it, and click and drag the MQL4 folder to the MetaTrader4 Data Folder. 
+Drag it to an empy part of the window, not to one of the existing folders.
+
+4. If there were existing copies of the PATI Trading Assistant installed, you will receive a message saying "The destination already has a 
+file named 'PATITradingAssistant.ex4'"  Click "Replace the file in the destination".  (The exact wording of the message may be slightly different
+depending on the version of Windows you are running.)
+
+5. Close and restart MetaTrader4.  The new versions of the PATI Trading Assistant should now be available in the Experts navigator window, 
+and the new version of the NewTradeIndicator in the Indicators navigator window.
+
+6. From the Indicators folder of the Navigator view in MetaTrader4, drag the NewTradeIndicator onto ONE and ONLY ONE chart. 
+From the Experts folder, drag the PATITradingAssistant onto each chart that you want to trade.

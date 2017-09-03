@@ -1,0 +1,8 @@
+The PATI Trading Assistant is made available without charge.It is something I have done to benefit my trading, and I want to share it with the community.
+
+If you want to make changes and improvements to it, the source code is freely available at https://github.com/daveh551/PATITradingAssistant.
+
+If you use the PATI Trading Assistant and find it helpful to you, and would like to make a voluntary donation to the author, you can send contributions to my paypal
+account at https://paypal.me/daveh551. Or login to your paypal account and send money to dave@infotouchsys.com.
+
+Thank you in advance, and I hope you enjoy and benefit from the PATI Trading Assistant.

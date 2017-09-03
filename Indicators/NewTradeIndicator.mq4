@@ -97,7 +97,13 @@ void OnTimer()
       if (ScanAllTradesEveryTick || (openOrdersThisTime != numbOpenOrders))
       {
          Position * existingOrderId[];
-         ArrayCopy(existingOrderId, trades);
+         int tradeSize = ArraySize(trades);
+         ArrayResize(existingOrderId, tradeSize, TRADESRESERVESIZE);
+         //ArrayCopy(existingOrderId, trades,0, 0, WHOLE_ARRAY);
+         for(int ix=0;ix<tradeSize;ix++)
+           {
+            existingOrderId[ix] = trades[ix];
+           }
          for (int i = 0; i < openOrdersThisTime; i++)
          {
             broker.SelectOrderByPosition(i);
