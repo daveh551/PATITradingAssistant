@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.34"
+#property version   "0.34.1"
 #property strict
 
 #include <stdlib.mqh>
@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.34";
+string Version="v0.34.1";
 string NTIPrefix = "NTI_";
 int DFVersion = 2;
 
@@ -750,7 +750,7 @@ void PrintConfigValues()
    Print("AccountForSpreadOnPendingBuyOrders: " + IntegerToString((int) _accountForSpreadOnPendingBuyOrders) + "\r\n");
    Print("PendingLotSize: " + DoubleToString( _pendingLotSize, 2) + "\r\n");
    Print("MarginForPendingRangeOrders: " + DoubleToString( _marginForPendingRangeOrders, 1) + "\r\n");
-   Print("RangeLinesColor: " + (string) _adjustStopOnTriggeredPendingOrders + "\r\n");
+   Print("RangeLinesColor: " + (string) _rangeLinesColor + "\r\n");
    Print("CancelPendingTrades: " + IntegerToString((int) _cancelPendingTrades) + "\r\n");
    Print("CaptureScreenShotsInFiles: " + IntegerToString((int) _captureScreenShotsInFiles) + "\r\n");   
 }
@@ -1298,6 +1298,8 @@ void CleanupEndOfDay()
    DeleteAllObjects();
    // Replace the version legend
    DrawVersion();
+   // Replace the Draw Range Button (if it's shown)
+   if (_showDrawRangeButton) DrawRangeButton();
 }
 
 void DeleteSaveFile()
@@ -1737,7 +1739,7 @@ bool CheckForMatchingPendingTrades(Position * newTrade, Position * deletedTrade)
    return false;
 }
 
-void CreatePendingOrdersForRange( double triggerPrice, int operation, bool setPendingOrders, bool allowForSpread, int margin, int spread)
+void CreatePendingOrdersForRange( double triggerPrice, int operation, bool setPendingOrders, bool allowForSpread, double margin, int spread)
 {
    // Delete any existing pending order of same operation type
    for(int ix=0;ix<totalActiveTrades;ix++)
