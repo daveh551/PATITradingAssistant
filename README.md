@@ -1,3 +1,15 @@
+# RELEASE NOTES for v 0.34.1 10/15/2017
+
+This release has fixes for a couple minor bugs that slipped out in v 0.34
+
+## Missing "Draw Range Lines Button 
+
+In v 0.34, if the Trading Assistant is left running overnight, the end-of-day clean up routine will remove the "Draw Range Lines" button when it cleans up everything else.  The bug fix redraws it after the clean up.
+
+## Non-integer Range Line Margins got rounded down to integers
+
+The configuration variable for "MarginForPendingRangeOrders" is a value intended to take fractional numbers (a double in computer programming terms), but, in v 0.34, if non-integer values were used, the result was as though the next smallest integer value had been input.  For example, entering a value of 1.5 would result in a pending order 1.0 pips away from the range.  This release fixes that bug.
+
 # RELEASE NOTES for v 0.34 9/2/2017
 
 This enhancement adds a new feature that, on command, will draw horizontal line at the High and Low of the day (HOD/LOD) as an aid in recognizing and responding to Range Breakouts (RBO's).  It also draws a Right Price Arrow to the right of the line giving the range. The HOD/LOD calculation takes into account a new configuration variable, BeginningOfDayOffsetHours, to offset the start of day from your server's clock.  The calculation extends up to BUT NOT INCLUDING the current open candle.
