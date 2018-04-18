@@ -36,6 +36,7 @@ int debug = true;
 #define DEBUG_ORDER ((debug & 0x0010) == 0x0010)
 #define DEBUG_OANDA ((debug & 0x0020) == 0x0020)
 #define DEBUG_TICK  ((debug & 0x0040) == 0x0040)
+#define DEBUG_STOP ((debug & 0x0080) == 0x0080)
 bool HeartBeat = true;
 int rngButtonXOffset = 10;
 int rngButtonYOffset = 50;
@@ -945,6 +946,10 @@ void HandlePendingTradeGoneActive()
 }
 void HandleTradeEntry(bool wasPending, bool savedTrade = false)
 {
+   if (DEBUG_ENTRY)
+   {
+      PrintFormat("Entered HandleTradeEntry(wasPending = %i, savedTrade=%i", (int) wasPending, (int) savedTrade);
+   }
       if(!savedTrade &&  !activeTrade.IsPending)
         {
          if (_alertOnTrade)
@@ -1000,12 +1005,19 @@ void HandleTradeEntry(bool wasPending, bool savedTrade = false)
 
 void SetStopAndProfitLevels(Position * trade, bool wasPending)
 {
-      
+      if (DEBUG_STOP  || DEBUG_ENTRY)
+      {
+         Print("Entering SetStopAndProfitLevels for " + PrintOrderType(trade.OrderType) + 
+         " order on " + trade.Symbol +
+          " at " + DoubleToStr(trade.OpenPrice,5) + 
+          ". Current stop=" + DoubleToStr(trade.StopPrice,5));
+         Print ("stopLoss = " + DoubleToStr(stopLoss, 5));
+      }
       if //(trade.OrderType == OP_BUY || trade.OrderType == OP_BUYLIMIT || trade.OrderType == OP_BUYSTOP))
          ((trade.OrderType & 0x0001) == 0)  // All BUY order types are even
       {
          if (trade.StopPrice == 0 || (wasPending && _adjustStopOnTriggeredPendingOrders)) trade.StopPrice = trade.OpenPrice - stopLoss;
-         if (DEBUG_ENTRY)
+         if (DEBUG_ENTRY || DEBUG_STOP)
          {
             Print ("Setting stoploss for BUY order (" + IntegerToString(trade.OrderType) +") StopLoss= " + DoubleToStr(trade.StopPrice, 5) + "(OpenPrice = " + DoubleToStr(trade.OpenPrice, 5) + ", stopLoss = " + DoubleToStr(stopLoss, 8));
          }
@@ -1015,7 +1027,7 @@ void SetStopAndProfitLevels(Position * trade, bool wasPending)
       else //SELL type
       {
          if (trade.StopPrice ==0 ||(wasPending && _adjustStopOnTriggeredPendingOrders ) )trade.StopPrice = trade.OpenPrice + stopLoss;
-         if (DEBUG_ENTRY)
+         if (DEBUG_ENTRY || DEBUG_STOP)
          {
             Print ("Setting stoploss for SELL order (" + IntegerToString(trade.OrderType) + ") StopLoss= " + DoubleToStr(trade.StopPrice, 5) + "(OpenPrice = " + DoubleToStr(trade.OpenPrice, 5) + ", stopLoss = " + DoubleToStr(stopLoss, 8));
          }
@@ -1025,9 +1037,9 @@ void SetStopAndProfitLevels(Position * trade, bool wasPending)
       }
       if (_sendSLandTPToBroker && !_testing)
       {
-         if (DEBUG_ENTRY)
+         if (DEBUG_ENTRY || DEBUG_STOP)
          {
-            Print("Sending to broker: TradeType=" + IntegerToString(trade.OrderType) + 
+            Print("Sending to broker: TradeType=" + PrintOrderType(trade.OrderType) + 
                " OpenPrice=" + DoubleToString(trade.OpenPrice,Digits) + 
                " StopPrice=" + DoubleToString(trade.StopPrice, Digits) +
                " TakeProfit=" + DoubleToString(trade.TakeProfitPrice, Digits)
@@ -1064,7 +1076,7 @@ void HandleClosedTrade(bool savedTrade = false)
                ") (" + DoubleToStr(profit, 1) + ")");            
            }
    
-         Print("Handling closed trade.  OrderType= " + IntegerToString(activeTrade.OrderType));
+         Print("Handling closed trade.  OrderType= " + PrintOrderType(activeTrade.OrderType));
          if (activeTrade.OrderClosed == 0) return;
       }
       if (_showExit)
@@ -1326,6 +1338,7 @@ void SaveTradeToFile(string fileName, Position *trade)
 
 void UpdateGV()
 {
+   int saveDebug = debug;
    if(GlobalVariableCheck(StringConcatenate(Prefix,"debug")))
       {
       if(GlobalVariableGet(StringConcatenate(Prefix,"debug")) != 0)
@@ -1339,6 +1352,10 @@ void UpdateGV()
       debug |= debugFlag;
    }
 
+   if (saveDebug != debug)
+   {
+      PrintFormat("debug changed to %X", debug);
+   }
    if(GlobalVariableCheck(StringConcatenate(Prefix,"HeartBeat")))
       {
       if(GlobalVariableGet(StringConcatenate(Prefix,"HeartBeat")) == 1)
@@ -1686,15 +1703,15 @@ void CheckForNewTradeReplacingDeletedTrade(Position * newTrade)
            {
                PrintFormat("Checking if new trade %i is a replacement for a deleted trade.", newTrade.TicketId);
                PrintFormat("Total Deleted Trades = %i", totalDeletedTrades);
-               PrintFormat("New trade %i, OrderType=%i, StopPrice=%f", newTrade.TicketId, newTrade.OrderType, newTrade.StopPrice);
+               PrintFormat("New trade %i, OrderType=%s, StopPrice=%f", newTrade.TicketId, PrintOrderType(newTrade.OrderType), newTrade.StopPrice);
            }
          for(int jx=0;jx<totalDeletedTrades;jx++)
            {
                Position * thisDeletedTrade = deletedTrades[jx];
                if(DEBUG_ORDER)
                  {
-                  PrintFormat("Examining trade %i: Order Type=%i, StopPrice = %f", 
-                     thisDeletedTrade.TicketId, thisDeletedTrade.OrderType, thisDeletedTrade.StopPrice);
+                  PrintFormat("Examining trade %i: Order Type=%s, StopPrice = %f", 
+                     thisDeletedTrade.TicketId, PrintOrderType(thisDeletedTrade.OrderType), thisDeletedTrade.StopPrice);
                  }
                //if(thisDeletedTrade.StopPrice == 0.0)  continue; //There's no stop loss on the deleted trade, so it doesn't matter
                //if(thisDeletedTrade.OrderType > 1 // Was deleted a pending trade?
@@ -1718,9 +1735,9 @@ bool CheckForMatchingPendingTrades(Position * newTrade, Position * deletedTrade)
          return false;
      
      }
-   if(deletedTrade.OrderType > 1)
+   if(deletedTrade.OrderType > 1) // deleted trade is pending
      {
-      if(newTrade.OrderType <=1)
+      if(newTrade.OrderType <=1) // new trade is active (OP_BUY or OP_SELL)
         {
          if((deletedTrade.OrderType & 0x01) == (newTrade.OrderType & 0x01))
            {
@@ -1916,4 +1933,33 @@ bool ChartForegroundSet(const bool value,const long chart_ID=0)
      }
 //--- successful execution
    return(true);
-  }     
+  }   
+  
+ string PrintOrderType(const int orderType)
+ {
+   string typeString = "Unknown";
+   switch(orderType)
+     {
+      case OP_BUYLIMIT :
+        typeString = "BUY LIMIT";
+        break;
+      case OP_BUY : 
+         typeString = "BUY";
+         break;
+      case OP_BUYSTOP :
+         typeString = "BUY STOP";
+         break;
+      case OP_SELL :
+         typeString = "SELL";
+         break;
+      case OP_SELLLIMIT :
+         typeString = "SELL LIMIT";
+         break;
+      case OP_SELLSTOP :
+         typeString = "SELL STOP";
+         break;
+      default:
+        break;
+     }
+     return typeString;
+ }  
