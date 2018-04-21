@@ -69,6 +69,8 @@ public:
                     }
                     virtual void SetSLandTP(Position *trade)
                     {
+                     PrintFormat("Entered broker.SetSLandTP(%i)", trade.TicketId);
+                     PrintFormat("%s price=%f, stop=%f, TP=%f", trade.Symbol, trade.OpenPrice, trade.StopPrice, trade.TakeProfitPrice);
                      SelectOrderByTicket(trade.TicketId);
                      if ((trade.StopPrice == OrderStopLoss()) &&
                         trade.TakeProfitPrice == OrderTakeProfit())
@@ -76,6 +78,7 @@ public:
                         Print(trade.Symbol + ": Not sending order to broker because SL and TP already set");
                         return;
                      }
+                     PrintFormat("Calling OrderModifyReliable()");
                      if (!OrderModifyReliable(trade.TicketId,
                         trade.OpenPrice,
                         trade.StopPrice,

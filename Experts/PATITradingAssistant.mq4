@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.34.1"
+#property version   "0.40.0"
 #property strict
 
 #include <stdlib.mqh>
@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.34.1";
+string Version="v0.40.0";
 string NTIPrefix = "NTI_";
 int DFVersion = 2;
 
@@ -78,6 +78,9 @@ extern bool ShowDrawRangeButton = true;
 extern color RangeLinesColor = Yellow;
 extern bool SetPendingOrdersOnRanges = false;
 extern double MarginForPendingRangeOrders = 1.0;
+extern bool ObserveTwoMinuteRule = true;
+extern bool AutoCloseOnCBIR = true;
+extern bool AlertOnCBIR = false;
 extern bool AccountForSpreadOnPendingBuyOrders = true;
 extern double PendingLotSize = 0.0;
 extern bool CancelPendingTrades = true;
@@ -118,6 +121,9 @@ bool _adjustStopOnTriggeredPendingOrders;
 int _beginningOfDayOffsetHours;
 bool _showDrawRangeButton;
 bool _setPendingOrdersOnRanges;
+bool _observeTwoMinuteRule;
+bool _autoCloseOnCBIR;
+bool _alertOnCBIR;
 bool _accountForSpreadOnPendingBuyOrders;
 double _pendingLotSize;
 double _marginForPendingRangeOrders;
@@ -160,6 +166,11 @@ int newTradesArraySize = 0;
 double dayHi;
 double dayLo;
 int tickNumber = 0;
+
+Position * pendingRangeHi = NULL;
+Position * pendingRangeLo = NULL;
+bool caughtTwoMinThisBar = false;
+bool resetRangePendingOrders = false;
 
 datetime dayHiTime;
 datetime dayLoTime;
@@ -235,6 +246,7 @@ void OnTick()
       if ( CheckNewBar())
       {
          alertedThisBar = false;
+         caughtTwoMinThisBar = false;
          UpdateGV();
 
  
@@ -256,7 +268,7 @@ void OnTick()
      {
       PrintFormat("Currently %i active trades last tick. ", totalActiveTrades);
      }
-  
+   
    PopulateActiveTradeIds();
    PopulateDeletedTrades();
  
@@ -272,6 +284,7 @@ void OnTick()
   
    
    CheckForNewTrades();
+   if (_observeTwoMinuteRule) CheckTwoMinuteRule();
   
    
    
@@ -502,6 +515,9 @@ void CopyInitialConfigVariables()
    _beginningOfDayOffsetHours = BeginningOfDayOffsetHours;
    _showDrawRangeButton = ShowDrawRangeButton;
    _setPendingOrdersOnRanges = SetPendingOrdersOnRanges;
+   _observeTwoMinuteRule = ObserveTwoMinuteRule;
+   _autoCloseOnCBIR = AutoCloseOnCBIR;
+   _alertOnCBIR = AlertOnCBIR;
    _accountForSpreadOnPendingBuyOrders = AccountForSpreadOnPendingBuyOrders;
    _pendingLotSize = PendingLotSize;
    _marginForPendingRangeOrders = MarginForPendingRangeOrders;
@@ -645,6 +661,18 @@ void ApplyConfiguration(string fileName)
                {
                   _setPendingOrdersOnRanges  = (bool) StringToInteger(value);
                }
+        else if (var == "ObserveTwoMinuteRule")
+               {
+                  _observeTwoMinuteRule = (bool) StringToInteger(value);
+               }
+        else if (var == "AutoCloseOnCBIR")
+               {
+                  _autoCloseOnCBIR = (bool) StringToInteger(value);
+               }
+        else if (var == "AlertOnCBIR")
+               {
+                  _alertOnCBIR= (bool) StringToInteger(value);
+               }
         else if (var == "AccountForSpreadOnPendingBuyOrders")
                {
                   _accountForSpreadOnPendingBuyOrders = (bool) StringToInteger(value); 
@@ -709,6 +737,9 @@ void SaveConfigurationFile()
    FileWriteString(fileHandle, "BeginningOfDayOffsetHours: " + IntegerToString((int) _beginningOfDayOffsetHours) + "\r\n");
    FileWriteString(fileHandle, "ShowDrawRangeButton: " + IntegerToString((int) _showDrawRangeButton) + "\r\n");
    FileWriteString(fileHandle, "SetPendingOrdersOnRanges: " + IntegerToString((int) _setPendingOrdersOnRanges) + "\r\n");
+   FileWriteString(fileHandle, "ObserveTwoMinuteRule: " + IntegerToString((int) _observeTwoMinuteRule) + "\r\n");
+   FileWriteString(fileHandle, "AutoCloseOnCBIR: " + IntegerToString((int) _autoCloseOnCBIR) + "\r\n");
+   FileWriteString(fileHandle, "AlertOnCBIR: " + IntegerToString((int) _alertOnCBIR) + "\r\n");
    FileWriteString(fileHandle, "AccountForSpreadOnPendingBuyOrders: " + IntegerToString((int) _accountForSpreadOnPendingBuyOrders) + "\r\n");
    FileWriteString(fileHandle, "PendingLotSize: " + DoubleToString( _pendingLotSize) + "\r\n");
    FileWriteString(fileHandle, "MarginForPendingRangeOrders: " + DoubleToString(_marginForPendingRangeOrders, 1) + "\r\n");
@@ -748,6 +779,9 @@ void PrintConfigValues()
    Print("BeginningOfDayOffsetHours: " + IntegerToString((int) _beginningOfDayOffsetHours) + "\r\n");
    Print("ShowDrawRangeButton: " + IntegerToString((int) _showDrawRangeButton) + "\r\n");
    Print("SetPendingOrdersOnRanges: " + IntegerToString((int) _setPendingOrdersOnRanges) + "\r\n");
+   Print("ObserveTwoMinuteRule: " + IntegerToString((int) _observeTwoMinuteRule) + "\r\n");
+   Print("AutoCloseOnCBIR: " + IntegerToString((int) _autoCloseOnCBIR) + "\r\n");
+   Print("AlertOnCBIR: " + IntegerToString((int) _alertOnCBIR) + "\r\n");
    Print("AccountForSpreadOnPendingBuyOrders: " + IntegerToString((int) _accountForSpreadOnPendingBuyOrders) + "\r\n");
    Print("PendingLotSize: " + DoubleToString( _pendingLotSize, 2) + "\r\n");
    Print("MarginForPendingRangeOrders: " + DoubleToString( _marginForPendingRangeOrders, 1) + "\r\n");
@@ -1808,6 +1842,8 @@ void CreatePendingOrdersForRange( double triggerPrice, int operation, bool setPe
       Print("About to place pending order: Symbol=" +trade.Symbol + " Price = " + DoubleToStr(trade.OpenPrice));
      }
    broker.CreateOrder(trade);
+   if (operation == OP_BUYSTOP) pendingRangeHi = trade;
+   else pendingRangeLo = trade;
    delete(trade);
    
 }
@@ -1963,3 +1999,70 @@ bool ChartForegroundSet(const bool value,const long chart_ID=0)
      }
      return typeString;
  }  
+ 
+ void CheckTwoMinuteRule()
+ {
+  if (TimeCurrent() - Time[0] > 13*60)  //Assuming 15-minute bar - so we're in the last 2 min
+   {
+      caughtTwoMinThisBar = true;
+      if (pendingRangeHi != NULL && pendingRangeHi.IsPending) 
+      {
+         broker.DeletePendingTrade(pendingRangeHi);
+         pendingRangeHi = NULL;
+         resetRangePendingOrders = true;
+      }
+      if (pendingRangeLo != NULL && pendingRangeLo.IsPending)
+      {
+         broker.DeletePendingTrade(pendingRangeLo);
+         pendingRangeLo = NULL;
+         resetRangePendingOrders = true;
+      }   
+   }
+ }
+ 
+ void CheckForCBIR()
+ {
+ 
+   if (!_autoCloseOnCBIR && !_alertOnCBIR) return;
+   bool cbir = false;
+   bool closeOnLine = false;
+   double close = Close[1]; //closing price of previous candle - is it inside range?
+   double rangeLimit;
+   Position * limitTrade;
+   if (pendingRangeHi.IsPending == false) // then we have an RBO long
+   {
+      if ((dayHi - close)< .000005) cbir = true;
+      rangeLimit = dayHi;
+      limitTrade = pendingRangeHi;
+      closeOnLine = CheckForCloseOnLine(close, rangeLimit);
+      
+   }
+   if (pendingRangeLo.IsPending == false) // then we have an RBO short
+   {
+      if ((dayLo - close) > .000005) cbir = true;
+      rangeLimit = dayLo;
+      limitTrade = pendingRangeLo;
+      closeOnLine = CheckForCloseOnLine(close, rangeLimit);
+   }
+   if (closeOnLine)
+   {
+      Alert (Symbol(), " closed on line after RBO."); 
+   }
+   if (!cbir) return;
+   if (_alertOnCBIR) 
+   {
+      Alert(Symbol(), " closed at ", DoubleToStr(close, 5), " (inside range limit of ", DoubleToStr(rangeLimit, 5));
+   }
+   if (_autoCloseOnCBIR)
+   {
+      //Close trade
+   }
+   
+ }
+ 
+ bool CheckForCloseOnLine(double closeValue, double rangeValue)
+ {
+   double delta = MathAbs(closeValue - rangeValue); //difference between previous close and the range limit
+   return (delta < 0.000005); // double values may not be precisely equal, but if the difference is less than the smallest change, 
+   // they are essentially equal.
+ }
