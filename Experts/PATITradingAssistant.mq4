@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.40.0"
+#property version   "0.40.1"
 #property strict
 
 #include <stdlib.mqh>
@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.40.0";
+string Version="v0.40.1";
 string NTIPrefix = "NTI_";
 int DFVersion = 2;
 
@@ -1844,7 +1844,7 @@ void CreatePendingOrdersForRange( double triggerPrice, int operation, bool setPe
    broker.CreateOrder(trade);
    if (operation == OP_BUYSTOP) pendingRangeHi = trade;
    else pendingRangeLo = trade;
-   delete(trade);
+   //delete(trade); Can't delete this since we just saved a reference to it.
    
 }
 //+------------------------------------------------------------------+
@@ -2002,7 +2002,8 @@ bool ChartForegroundSet(const bool value,const long chart_ID=0)
  
  void CheckTwoMinuteRule()
  {
-  if (TimeCurrent() - Time[0] > 13*60)  //Assuming 15-minute bar - so we're in the last 2 min
+  datetime curTime = TimeCurrent();
+  if (((TimeCurrent() - Time[0]) > 13*60) && !caughtTwoMinThisBar)  //Assuming 15-minute bar - so we're in the last 2 min
    {
       caughtTwoMinThisBar = true;
       if (pendingRangeHi != NULL && pendingRangeHi.IsPending) 
