@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.34.1"
+#property version   "0.34.2"
 #property strict
 
 #include <stdlib.mqh>
@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.34.1";
+string Version="v0.34.2";
 string NTIPrefix = "NTI_";
 int DFVersion = 2;
 
@@ -86,6 +86,8 @@ extern int EndOfDayOffsetHours = 0;
 extern int BeginningOfDayOffsetHours = 0;
 extern string ConfigureScreenShotCapture = "===Configure Screen Shot Capture===";
 extern bool CaptureScreenShotsInFiles = true;
+extern int ScreenShotWidth = 0;
+extern int ScreenShotHeight = 0;
 
 
 const double  GVUNINIT= -99999999;
@@ -125,6 +127,8 @@ color _rangeLinesColor;
 bool _cancelPendingTrades;
 bool _makeTickVisible;
 bool _captureScreenShotsInFiles;
+int _screenShotWidth;
+int _screenShotHeight;
 
 
 bool alertedThisBar = false;
@@ -509,6 +513,8 @@ void CopyInitialConfigVariables()
    _cancelPendingTrades = CancelPendingTrades;
    _makeTickVisible = MakeTickVisible;
    _captureScreenShotsInFiles = CaptureScreenShotsInFiles;
+   _screenShotWidth = ScreenShotWidth;
+   _screenShotHeight = ScreenShotHeight;
 
 }
 
@@ -669,7 +675,14 @@ void ApplyConfiguration(string fileName)
                {
                   _captureScreenShotsInFiles = (bool) StringToInteger(value);
                }
-        
+        else if (var == "ScreenShotWidth")
+               {
+                  _screenShotWidth = StringToInteger (value);
+               }
+        else if (var == "ScreenShotHeight")
+               {
+                 _screenShotHeight = StringToInteger(value);
+               }
         }
               
       }
@@ -715,6 +728,8 @@ void SaveConfigurationFile()
    FileWriteString(fileHandle, "RangeLinesColor: " + (string) _rangeLinesColor + "\r\n");
    FileWriteString(fileHandle, "CancelPendingTrades: " + IntegerToString((int) _cancelPendingTrades) + "\r\n");
    FileWriteString(fileHandle, "CaptureScreenShotsInFiles: " + IntegerToString((int) _captureScreenShotsInFiles) + "\r\n");
+   FileWriteString(fileHandle, "ScreenShotWidth: " + IntegerToString(_screenShotWidth) + "\r\n");
+   FileWriteString(fileHandle, "ScreenShotHeight: " + IntegerToString(_screenShotHeight) + "\r\n");
 
 
    
@@ -1213,8 +1228,11 @@ void HandleDeletedTrade()
 void CaptureScreenShot()
 {
    if(!_captureScreenShotsInFiles) return;
-      int xPixels = ChartWidthInPixels();
-      int yPixels = ChartHeightInPixelsGet();
+   //Modification suggested by Tim Black, @IsItCoffeeYet
+   int xPixels = _screenShotWidth;
+   int yPixels = _screenShotHeight;
+      if (xPixels == 0) xPixels = ChartWidthInPixelsGet(0);
+      if (yPixels == 0) yPixels = ChartHeightInPixelsGet();
       ChartForegroundSet(0);
       string fileName= TimeToStr(TimeCurrent(), TIME_DATE | TIME_MINUTES) +
           "_" + Symbol();
@@ -1428,6 +1446,8 @@ datetime GetDate(datetime time)
 
 void PlotRangeLines()
 {
+   datetime eod = beginningOfDay + 19*60*60;
+   if (eod < (Time[0] + 5*60*60)) eod = Time[0] + 5*60*60;  //Make it at least 5 hours past current candle
    ObjectSetInteger(0, rngButtonName, OBJPROP_STATE, true);
    datetime TimeCopy[];
    ArrayCopy(TimeCopy, Time, 0, 0, WHOLE_ARRAY);
@@ -1436,20 +1456,19 @@ void PlotRangeLines()
    double LowPrices[];
    ArrayCopy(LowPrices, Low, 0, 0, WHOLE_ARRAY);
    FindDayMinMax(beginningOfDay, TimeCopy[0], TimeCopy, HighPrices, LowPrices);
-   if (ObjectFind(0, Prefix + "_DayRangeHigh") == 0)
-    ObjectDelete(0, Prefix + "_DayRangeHigh");
+   if (ObjectFind(0, Prefix + "_DayRangeHigh") == 0) ObjectDelete(0, Prefix + "_DayRangeHigh");
    if (ObjectFind(0, Prefix + "_DayRangeLow") == 0) ObjectDelete(0, Prefix + "_DayRangeLow");
    if (ObjectFind(0, Prefix + "_DayHighArrow") == 0) ObjectDelete(0, Prefix + "_DayHighArrow");
    if (ObjectFind(0, Prefix + "_DayLowArrow") == 0) ObjectDelete(0, Prefix + "_DayLowArrow");
-   ObjectCreate(0, Prefix + "_DayRangeHigh", OBJ_TREND, 0, dayHiTime, dayHi, beginningOfDay + 19*60*60, dayHi);
+   ObjectCreate(0, Prefix + "_DayRangeHigh", OBJ_TREND, 0, dayHiTime, dayHi, eod, dayHi);
    ObjectSetInteger(0, Prefix + "_DayRangeHigh", OBJPROP_COLOR, _rangeLinesColor);
    ObjectSet(Prefix + "_DayRangeHigh", OBJPROP_RAY, false);
-   ObjectCreate(0, Prefix + "_DayHighArrow", OBJ_ARROW_RIGHT_PRICE, 0, beginningOfDay + 19 * 60 *60 +15*60, dayHi);
+   ObjectCreate(0, Prefix + "_DayHighArrow", OBJ_ARROW_RIGHT_PRICE, 0, eod + 15*60, dayHi);
    ObjectSetInteger(0, Prefix + "_DayHighArrow", OBJPROP_COLOR, Blue);
-   ObjectCreate(0, Prefix + "_DayRangeLow", OBJ_TREND, 0, dayLoTime, dayLo, beginningOfDay + 19*60*60, dayLo);
+   ObjectCreate(0, Prefix + "_DayRangeLow", OBJ_TREND, 0, dayLoTime, dayLo, eod, dayLo);
    ObjectSetInteger(0, Prefix + "_DayRangeLow", OBJPROP_COLOR, _rangeLinesColor);
    ObjectSet(Prefix + "_DayRangeLow", OBJPROP_RAY, false);
-   ObjectCreate(0, Prefix + "_DayLowArrow", OBJ_ARROW_RIGHT_PRICE, 0, beginningOfDay + 19 * 60 *60 +15*60, dayLo);
+   ObjectCreate(0, Prefix + "_DayLowArrow", OBJ_ARROW_RIGHT_PRICE, 0, eod + 15*60, dayLo);
    ObjectSetInteger(0, Prefix + "_DayLowArrow", OBJPROP_COLOR, Blue);
    int spread = SymbolInfoInteger(Symbol(), SYMBOL_SPREAD);
    CreatePendingOrdersForRange(dayHi, OP_BUYSTOP, _setPendingOrdersOnRanges, _accountForSpreadOnPendingBuyOrders, _marginForPendingRangeOrders, spread);
@@ -1881,7 +1900,7 @@ bool ButtonCreate(const long              chart_ID=0,               // chart's I
 //+------------------------------------------------------------------+
 //| The function receives the chart width in pixels.                 |
 //+------------------------------------------------------------------+
-int ChartWidthInPixels(const long chart_ID=0)
+int ChartWidthInPixelsGet(const long chart_ID=0)
   {
 //--- prepare the variable to get the property value
    long result=-1;
