@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.40.1"
+#property version   "0.40.2"
 #property strict
 
 #include <stdlib.mqh>
@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.40.1";
+string Version="v0.40.2";
 string NTIPrefix = "NTI_";
 int DFVersion = 2;
 
@@ -163,17 +163,23 @@ int deletedTradesArraySize = 0;
 int totalNewTrades = 0;
 Position * newTrades[]; // new trades since last tick
 int newTradesArraySize = 0;
-double dayHi;
-double dayLo;
 int tickNumber = 0;
 
-Position * pendingRangeHi = NULL;
-Position * pendingRangeLo = NULL;
+struct Range
+  {
+   double rangeLimit;
+   datetime rangeTime;
+   int pendngRangeOrderId;
+  };
+  
+const int RANGEHI = 0;
+const int RANGELO = 1;
+
+Range ranges[2] = { {0.0, 0, 0}, {0.0, 0, 0}};
+
 bool caughtTwoMinThisBar = false;
 bool resetRangePendingOrders = false;
 
-datetime dayHiTime;
-datetime dayLoTime;
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
@@ -1470,47 +1476,46 @@ void PlotRangeLines()
    double LowPrices[];
    ArrayCopy(LowPrices, Low, 0, 0, WHOLE_ARRAY);
    FindDayMinMax(beginningOfDay, TimeCopy[0], TimeCopy, HighPrices, LowPrices);
-   if (ObjectFind(0, Prefix + "_DayRangeHigh") == 0)
-    ObjectDelete(0, Prefix + "_DayRangeHigh");
+   if (ObjectFind(0, Prefix + "_DayRangeHigh") == 0) ObjectDelete(0, Prefix + "_DayRangeHigh");
    if (ObjectFind(0, Prefix + "_DayRangeLow") == 0) ObjectDelete(0, Prefix + "_DayRangeLow");
    if (ObjectFind(0, Prefix + "_DayHighArrow") == 0) ObjectDelete(0, Prefix + "_DayHighArrow");
    if (ObjectFind(0, Prefix + "_DayLowArrow") == 0) ObjectDelete(0, Prefix + "_DayLowArrow");
-   ObjectCreate(0, Prefix + "_DayRangeHigh", OBJ_TREND, 0, dayHiTime, dayHi, beginningOfDay + 19*60*60, dayHi);
+   ObjectCreate(0, Prefix + "_DayRangeHigh", OBJ_TREND, 0, ranges[RANGEHI].rangeTime, ranges[RANGEHI].rangeLimit, beginningOfDay + 19*60*60, ranges[RANGEHI].rangeLimit);
    ObjectSetInteger(0, Prefix + "_DayRangeHigh", OBJPROP_COLOR, _rangeLinesColor);
    ObjectSet(Prefix + "_DayRangeHigh", OBJPROP_RAY, false);
-   ObjectCreate(0, Prefix + "_DayHighArrow", OBJ_ARROW_RIGHT_PRICE, 0, beginningOfDay + 19 * 60 *60 +15*60, dayHi);
+   ObjectCreate(0, Prefix + "_DayHighArrow", OBJ_ARROW_RIGHT_PRICE, 0, beginningOfDay + 19 * 60 *60 +15*60, ranges[RANGEHI].rangeLimit);
    ObjectSetInteger(0, Prefix + "_DayHighArrow", OBJPROP_COLOR, Blue);
-   ObjectCreate(0, Prefix + "_DayRangeLow", OBJ_TREND, 0, dayLoTime, dayLo, beginningOfDay + 19*60*60, dayLo);
+   ObjectCreate(0, Prefix + "_DayRangeLow", OBJ_TREND, 0, ranges[RANGELO].rangeTime, ranges[RANGELO].rangeLimit, beginningOfDay + 19*60*60, ranges[RANGELO].rangeLimit);
    ObjectSetInteger(0, Prefix + "_DayRangeLow", OBJPROP_COLOR, _rangeLinesColor);
    ObjectSet(Prefix + "_DayRangeLow", OBJPROP_RAY, false);
-   ObjectCreate(0, Prefix + "_DayLowArrow", OBJ_ARROW_RIGHT_PRICE, 0, beginningOfDay + 19 * 60 *60 +15*60, dayLo);
+   ObjectCreate(0, Prefix + "_DayLowArrow", OBJ_ARROW_RIGHT_PRICE, 0, beginningOfDay + 19 * 60 *60 +15*60, ranges[RANGELO].rangeLimit);
    ObjectSetInteger(0, Prefix + "_DayLowArrow", OBJPROP_COLOR, Blue);
    int spread = SymbolInfoInteger(Symbol(), SYMBOL_SPREAD);
-   CreatePendingOrdersForRange(dayHi, OP_BUYSTOP, _setPendingOrdersOnRanges, _accountForSpreadOnPendingBuyOrders, _marginForPendingRangeOrders, spread);
-   CreatePendingOrdersForRange(dayLo, OP_SELLSTOP, _setPendingOrdersOnRanges, _accountForSpreadOnPendingBuyOrders, _marginForPendingRangeOrders, spread);
+   CreatePendingOrdersForRange(ranges[RANGEHI].rangeLimit, OP_BUYSTOP, _setPendingOrdersOnRanges, _accountForSpreadOnPendingBuyOrders, _marginForPendingRangeOrders, spread);
+   CreatePendingOrdersForRange(ranges[RANGELO].rangeLimit, OP_SELLSTOP, _setPendingOrdersOnRanges, _accountForSpreadOnPendingBuyOrders, _marginForPendingRangeOrders, spread);
    ObjectSetInteger(0, rngButtonName, OBJPROP_STATE,false);
    
 }
    
 void FindDayMinMax(datetime start, datetime end, datetime& TimeCopy[], double& HighPrices[], double& LowPrices[])
 {
-   dayHi = 0.0;
-   dayLo = 9999.99;
+   ranges[RANGEHI].rangeLimit = 0.0;
+   ranges[RANGELO].rangeLimit = 9999.99;
    datetime now = TimeCopy[0];
    if (now < end) end = now;
    int candlePeriod = TimeCopy[0] - TimeCopy[1];
    int interval = (now - start)/ candlePeriod; 
    while(TimeCopy[interval] <= end && interval > 0)
      {
-         if (HighPrices[interval] >dayHi)
+         if (HighPrices[interval] >ranges[RANGEHI].rangeLimit)
          {
-            dayHi = HighPrices[interval];
-            dayHiTime = TimeCopy[interval];
+            ranges[RANGEHI].rangeLimit = HighPrices[interval];
+            ranges[RANGEHI].rangeTime = TimeCopy[interval];
          }
-         if (LowPrices[interval] < dayLo)
+         if (LowPrices[interval] < ranges[RANGELO].rangeLimit)
          {
-            dayLo = LowPrices[interval];
-            dayLoTime = TimeCopy[interval];
+            ranges[RANGELO].rangeLimit = LowPrices[interval];
+            ranges[RANGELO].rangeTime = TimeCopy[interval];
          }
          interval--;
      }
@@ -1842,9 +1847,11 @@ void CreatePendingOrdersForRange( double triggerPrice, int operation, bool setPe
       Print("About to place pending order: Symbol=" +trade.Symbol + " Price = " + DoubleToStr(trade.OpenPrice));
      }
    broker.CreateOrder(trade);
-   if (operation == OP_BUYSTOP) pendingRangeHi = trade;
-   else pendingRangeLo = trade;
-   //delete(trade); Can't delete this since we just saved a reference to it.
+   int rangeIndex = RANGELO;
+   if (operation == OP_BUYSTOP) rangeIndex = RANGEHI;
+   ranges[rangeIndex].pendngRangeOrderId = trade.TicketId;
+ 
+   delete(trade); 
    
 }
 //+------------------------------------------------------------------+
@@ -2005,19 +2012,22 @@ bool ChartForegroundSet(const bool value,const long chart_ID=0)
   datetime curTime = TimeCurrent();
   if (((TimeCurrent() - Time[0]) > 13*60) && !caughtTwoMinThisBar)  //Assuming 15-minute bar - so we're in the last 2 min
    {
-      caughtTwoMinThisBar = true;
-      if (pendingRangeHi != NULL && pendingRangeHi.IsPending) 
+       caughtTwoMinThisBar = true;
+      for (int index = RANGEHI; index <= RANGELO; index++)
       {
-         broker.DeletePendingTrade(pendingRangeHi);
-         pendingRangeHi = NULL;
-         resetRangePendingOrders = true;
+         if (ranges[index].pendngRangeOrderId != 0)
+         {
+            Position * pendingTrade = broker.GetTrade(ranges[index].pendngRangeOrderId);
+            if ((pendingTrade != NULL) && pendingTrade.IsPending)
+            {
+               broker.DeletePendingTrade(pendingTrade);
+               ranges[index].pendngRangeOrderId = 0;
+               resetRangePendingOrders = true;
+            }
+            if (CheckPointer(pendingTrade) != POINTER_INVALID) delete(pendingTrade);
+         }
       }
-      if (pendingRangeLo != NULL && pendingRangeLo.IsPending)
-      {
-         broker.DeletePendingTrade(pendingRangeLo);
-         pendingRangeLo = NULL;
-         resetRangePendingOrders = true;
-      }   
+     
    }
  }
  
@@ -2030,21 +2040,24 @@ bool ChartForegroundSet(const bool value,const long chart_ID=0)
    double close = Close[1]; //closing price of previous candle - is it inside range?
    double rangeLimit;
    Position * limitTrade;
-   if (pendingRangeHi.IsPending == false) // then we have an RBO long
+   for (int index = RANGEHI; index <= RANGELO; index++)
    {
-      if ((dayHi - close)< .000005) cbir = true;
-      rangeLimit = dayHi;
-      limitTrade = pendingRangeHi;
-      closeOnLine = CheckForCloseOnLine(close, rangeLimit);
-      
+      if (ranges[index].pendngRangeOrderId != 0)
+      {
+         int multiplier = 1;
+         if (index == RANGELO) multiplier = -1.0;
+         limitTrade = broker.GetTrade(ranges[index].pendngRangeOrderId);
+         if (CheckPointer(limitTrade) == POINTER_INVALID) continue; //defensive programming!
+         if (!limitTrade.IsPending) //then we have an active RBO trade
+         {
+            if(((ranges[index].rangeLimit - close) * multiplier) < .000005) cbir = true;
+            rangeLimit = ranges[index].rangeLimit;
+            closeOnLine = CheckForCloseOnLine(close, rangeLimit);
+         }
+         if (CheckPointer(limitTrade) != POINTER_INVALID) delete(limitTrade);
+      }
    }
-   if (pendingRangeLo.IsPending == false) // then we have an RBO short
-   {
-      if ((dayLo - close) > .000005) cbir = true;
-      rangeLimit = dayLo;
-      limitTrade = pendingRangeLo;
-      closeOnLine = CheckForCloseOnLine(close, rangeLimit);
-   }
+   
    if (closeOnLine)
    {
       Alert (Symbol(), " closed on line after RBO."); 

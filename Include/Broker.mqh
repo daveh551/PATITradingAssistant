@@ -91,12 +91,13 @@ public:
                     
                     virtual void CreateOrder (Position * trade)
                     {
+                        int tradeId;
                         if (trade.LotSize == 0.0)
                           {
                            Alert("Trade with zero lot size cannot be entered.");
                            return;
                           }
-                        OrderSendReliable(
+                        tradeId = OrderSendReliable(
                            symbolPrefix + trade.Symbol + symbolSuffix, 
                            trade.OrderType,
                            trade.LotSize,
@@ -106,7 +107,7 @@ public:
                            0.0,
                            "",
                            0);
-                           
+                         if (tradeId != -1) trade.TicketId = tradeId;
                     }
                     
                     virtual void DeletePendingTrade ( Position * trade)
@@ -118,7 +119,13 @@ public:
                           }
                         OrderDelete(trade.TicketId);
                     }
-                    virtual Position * FindLastTrade()
+                    
+                    virtual void CloseTrade(int ticketId)
+                    {
+                        SelectOrderByTicket(ticketId);
+                        OrderCloseReliable(ticketId, OrderLots(), (OrderType() == OP_BUY)?Bid:Ask, 0);
+                    }
+                    virtual Position * FindLastTrade() 
                     {
                         for(int ix=OrdersHistoryTotal()-1;ix>=0;ix--)
                           {
