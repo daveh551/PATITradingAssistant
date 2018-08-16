@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.40.2"
+#property version   "0.40.3alpha4"
 #property strict
 
 #include <stdlib.mqh>
@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.40.2";
+string Version="v0.40.3alpha4";
 string NTIPrefix = "NTI_";
 int DFVersion = 2;
 
@@ -37,6 +37,7 @@ int debug = true;
 #define DEBUG_OANDA ((debug & 0x0020) == 0x0020)
 #define DEBUG_TICK  ((debug & 0x0040) == 0x0040)
 #define DEBUG_STOP ((debug & 0x0080) == 0x0080)
+#define DEBUG_RANGELINES ((debug & 0x0100) == 0x0100)
 bool HeartBeat = true;
 int rngButtonXOffset = 10;
 int rngButtonYOffset = 50;
@@ -170,15 +171,15 @@ struct Range
    double rangeLimit;
    datetime rangeTime;
    int pendngRangeOrderId;
+   bool resetRange;
   };
   
 const int RANGEHI = 0;
 const int RANGELO = 1;
 
-Range ranges[2] = { {0.0, 0, 0}, {0.0, 0, 0}};
+Range ranges[2] = { {0.0, 0, 0, false}, {0.0, 0, 0, false}};
 
 bool caughtTwoMinThisBar = false;
-bool resetRangePendingOrders = false;
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
@@ -209,7 +210,7 @@ int OnInit()
       return (INIT_FAILED);  // Keep the EA from running if just testing
    }
    Initialize();
-   EventSetTimer(600); // 10 minutes
+   EventSetTimer(1); // one second interval to trigger OnTick when traffic is slow
    return(INIT_SUCCEEDED);
   }
 //+------------------------------------------------------------------+
@@ -249,21 +250,9 @@ void OnTick()
      }
    if (!_testing)
    { 
-      if ( CheckNewBar())
-      {
-         alertedThisBar = false;
-         caughtTwoMinThisBar = false;
-         UpdateGV();
-
+      if ( CheckNewBar()) PerformNewBar();
+         
  
-        
-         if (Time[0] >= endOfDay)
-         {
-           endOfDay += 24*60*60;
-           CleanupEndOfDay();
-           beginningOfDay += 24*60*60;
-         }
-      }
       if (!alertedThisBar)
       {
          CheckNTI();
@@ -300,8 +289,15 @@ void OnTick()
 //+------------------------------------------------------------------+
 void OnTimer()
   {
-//---
-      HeartBeat();
+      // count 1 second ticks up to 10 minutes, then call HeartBeat();
+      static int tenMinuteTickCount = 0;
+      if(++tenMinuteTickCount > 600)
+        {
+            HeartBeat();
+            tenMinuteTickCount = 0;
+        }
+      OnTick();  // now force a call to OnTick, just in case there haven't been any ticks lately.
+
   }
   
   string MakeGVname( int sequence)
@@ -315,7 +311,7 @@ void OnChartEvent(const int id, const long& lParam, const double& dParam, const 
    {
       if (sParam == rngButtonName)
       {
-         PlotRangeLines();
+         PlotRangeLines(true);
       }
    }
 }
@@ -446,7 +442,14 @@ void Initialize()
      Alert("ActiveTrades invalid after InitializeTradeArrrays");
     }
   if (CheckSaveFileValid())
+  {
+   
+   if (DEBUG_RANGELINES)
+   {
+      PrintFormat("Calling ReadOldTrades in Initialize()");
+   }
    ReadOldTrades(saveFileName);
+  }
   else
    DeleteSaveFile();
   if(!ValidateActiveTrades())
@@ -855,7 +858,24 @@ void PrintConfigValues()
                activeTrade = activeTradesLastTick[ix];
                if(activeTrade.IsPending)
                  {
-                    HandleDeletedTrade();  //TODO: Need to specify which trade                  
+                     int deleteTradeID = activeTrade.TicketId;
+                     if(DEBUG_RANGELINES)
+                       {
+                        PrintFormat("Checking if deleted pending order %i is a pending range line", deleteTradeID);
+                        PrintFormat("RANGELO orderID = %i", ranges[RANGELO].pendngRangeOrderId);
+                        PrintFormat("RANGEHI orderID = %i", ranges[RANGEHI].pendngRangeOrderId);
+                       }
+                    
+                     for (int dx = 0; dx <= RANGEHI; dx++)
+                     {
+                        if (ranges[dx].pendngRangeOrderId == deleteTradeID)
+                        {
+                           ranges[dx].pendngRangeOrderId = 0;
+                           break;
+                        }
+                     }
+                     
+                    HandleDeletedTrade();                   
                  }
                else
                  {
@@ -869,6 +889,20 @@ void PrintConfigValues()
    void CheckForPendingTradesGoneActive()
    {
       int seqNo = 1;
+      int copyThisTick[];
+      Position * copyLastTick[];
+      ArrayCopy(copyThisTick,activeTradeIdsThisTick);
+      ArrayResize(copyLastTick,totalActiveTradeIdsThisTick);
+      for(int ix=0;ix<totalActiveTradeIdsThisTick;ix++)
+        {
+         if(CheckPointer(activeTradesLastTick[ix]) == POINTER_DYNAMIC)
+           {
+            copyLastTick[ix] = new Position(activeTradesLastTick[ix]);     
+           }
+         else copyLastTick[ix] = NULL;
+        }
+     
+     
       for(int jx=0; jx<totalActiveTradeIdsThisTick; jx++)
       {         
          int tradeId = activeTradeIdsThisTick[jx];
@@ -886,6 +920,22 @@ void PrintConfigValues()
                            if (CheckPointer(activeTradesLastTick[ix]) == POINTER_DYNAMIC) delete activeTradesLastTick[ix];
                            activeTradesLastTick[ix] = broker.GetTrade(tradeId);
                            activeTrade = activeTradesLastTick[ix];
+                           if(activeTrade.TicketId == 0)
+                             {
+                             PrintFormat("totalActiveTrades = %i, totalActiveTradesIdsThisTick = %i", totalActiveTrades, totalActiveTradeIdsThisTick);
+                             // Dump the two arrays
+                              for(int dx=0;dx<ArraySize(copyLastTick);dx++)
+                                {
+                                 if(CheckPointer(copyLastTick[dx]) == POINTER_DYNAMIC)
+                                    PrintFormat("Last Tick TradeId[%i]: %i", dx, copyLastTick[dx].TicketId);
+                                 else PrintFormat("LastTick [%i] is INVALID POINTER", dx);
+                                 
+                                }
+                              for(int dx=0;dx<ArraySize(copyThisTick);dx++)
+                                {
+                                 PrintFormat("ThisTick[i%] TradeID = %i", dx, copyThisTick[dx]);
+                                }
+                             }
                            HandlePendingTradeGoneActive();
                         }
                      }
@@ -895,6 +945,14 @@ void PrintConfigValues()
            }
          seqNo++;
       }
+      //Delete the copy we created to avoid memory leaks
+      for(int ix=0;ix<ArraySize(copyLastTick);ix++)
+        {
+         if(CheckPointer(copyLastTick[ix]) == POINTER_DYNAMIC) 
+           {
+            delete copyLastTick[ix];
+           }
+        }
    }
 
    
@@ -1371,6 +1429,10 @@ void SaveTradeToFile(string fileName, Position *trade)
          FileWriteString(fileHandle,StringFormat("DataVersion: %i\r\n", DFVersion));
          FileWriteString(fileHandle, StringFormat("Server Trade Date: %s\r\n", TimeToString(TimeCurrent(), TIME_DATE)));
       }
+      if(DEBUG_RANGELINES)
+        {
+         PrintFormat("Writing SaveFile entry for trade ID %i, Initial Stop %f", trade.TicketId, trade.StopPrice);
+        }
       FileWriteString(fileHandle, StringFormat("Trade ID: %i Initial Stop: %f\r\n", trade.TicketId, trade.StopPrice));
       FileClose(fileHandle);
    }
@@ -1435,6 +1497,10 @@ void ReadOldTrades(string fileName)
                }
                lastTradeId = tradeId;
                Position * lastTrade = broker.GetTrade(lastTradeId);
+               if(DEBUG_RANGELINES)
+                 {
+                  PrintFormat("ReadOldTrades returned tradeID %i from Saved Trade", lastTrade.TicketId);
+                 }
                AddActiveTrade(lastTrade);
               
                PrintFormat("Calling HandleNewEntry for saved trade %i, with stop loss %f", tradeId, sl);
@@ -1466,7 +1532,7 @@ datetime GetDate(datetime time)
 }
 
 
-void PlotRangeLines()
+void PlotRangeLines(bool buttonPress = false)
 {
    ObjectSetInteger(0, rngButtonName, OBJPROP_STATE, true);
    datetime TimeCopy[];
@@ -1475,32 +1541,65 @@ void PlotRangeLines()
    ArrayCopy(HighPrices, High, 0, 0, WHOLE_ARRAY);
    double LowPrices[];
    ArrayCopy(LowPrices, Low, 0, 0, WHOLE_ARRAY);
-   FindDayMinMax(beginningOfDay, TimeCopy[0], TimeCopy, HighPrices, LowPrices);
-   if (ObjectFind(0, Prefix + "_DayRangeHigh") == 0) ObjectDelete(0, Prefix + "_DayRangeHigh");
-   if (ObjectFind(0, Prefix + "_DayRangeLow") == 0) ObjectDelete(0, Prefix + "_DayRangeLow");
-   if (ObjectFind(0, Prefix + "_DayHighArrow") == 0) ObjectDelete(0, Prefix + "_DayHighArrow");
-   if (ObjectFind(0, Prefix + "_DayLowArrow") == 0) ObjectDelete(0, Prefix + "_DayLowArrow");
-   ObjectCreate(0, Prefix + "_DayRangeHigh", OBJ_TREND, 0, ranges[RANGEHI].rangeTime, ranges[RANGEHI].rangeLimit, beginningOfDay + 19*60*60, ranges[RANGEHI].rangeLimit);
-   ObjectSetInteger(0, Prefix + "_DayRangeHigh", OBJPROP_COLOR, _rangeLinesColor);
-   ObjectSet(Prefix + "_DayRangeHigh", OBJPROP_RAY, false);
-   ObjectCreate(0, Prefix + "_DayHighArrow", OBJ_ARROW_RIGHT_PRICE, 0, beginningOfDay + 19 * 60 *60 +15*60, ranges[RANGEHI].rangeLimit);
-   ObjectSetInteger(0, Prefix + "_DayHighArrow", OBJPROP_COLOR, Blue);
-   ObjectCreate(0, Prefix + "_DayRangeLow", OBJ_TREND, 0, ranges[RANGELO].rangeTime, ranges[RANGELO].rangeLimit, beginningOfDay + 19*60*60, ranges[RANGELO].rangeLimit);
-   ObjectSetInteger(0, Prefix + "_DayRangeLow", OBJPROP_COLOR, _rangeLinesColor);
-   ObjectSet(Prefix + "_DayRangeLow", OBJPROP_RAY, false);
-   ObjectCreate(0, Prefix + "_DayLowArrow", OBJ_ARROW_RIGHT_PRICE, 0, beginningOfDay + 19 * 60 *60 +15*60, ranges[RANGELO].rangeLimit);
-   ObjectSetInteger(0, Prefix + "_DayLowArrow", OBJPROP_COLOR, Blue);
    int spread = SymbolInfoInteger(Symbol(), SYMBOL_SPREAD);
-   CreatePendingOrdersForRange(ranges[RANGEHI].rangeLimit, OP_BUYSTOP, _setPendingOrdersOnRanges, _accountForSpreadOnPendingBuyOrders, _marginForPendingRangeOrders, spread);
-   CreatePendingOrdersForRange(ranges[RANGELO].rangeLimit, OP_SELLSTOP, _setPendingOrdersOnRanges, _accountForSpreadOnPendingBuyOrders, _marginForPendingRangeOrders, spread);
+   if (!RangeIsActive(RANGELO) && (ranges[RANGELO].resetRange || buttonPress))
+     {
+       FindDayMin(beginningOfDay, TimeCopy[0], TimeCopy, LowPrices);
+       if (ObjectFind(0, Prefix + "_DayRangeLow") == 0) ObjectDelete(0, Prefix + "_DayRangeLow");
+       if (ObjectFind(0, Prefix + "_DayLowArrow") == 0) ObjectDelete(0, Prefix + "_DayLowArrow");
+      ObjectCreate(0, Prefix + "_DayRangeLow", OBJ_TREND, 0, ranges[RANGELO].rangeTime, ranges[RANGELO].rangeLimit, beginningOfDay + 19*60*60, ranges[RANGELO].rangeLimit);
+      ObjectSetInteger(0, Prefix + "_DayRangeLow", OBJPROP_COLOR, _rangeLinesColor);
+      ObjectSet(Prefix + "_DayRangeLow", OBJPROP_RAY, false);
+      ObjectCreate(0, Prefix + "_DayLowArrow", OBJ_ARROW_RIGHT_PRICE, 0, beginningOfDay + 19 * 60 *60 +15*60, ranges[RANGELO].rangeLimit);
+      ObjectSetInteger(0, Prefix + "_DayLowArrow", OBJPROP_COLOR, Blue);
+      CreatePendingOrdersForRange(ranges[RANGELO].rangeLimit, OP_SELLSTOP, _setPendingOrdersOnRanges, _accountForSpreadOnPendingBuyOrders, _marginForPendingRangeOrders, spread);
+      ranges[RANGELO].resetRange = false;
+     }
+   if(!RangeIsActive(RANGEHI) && (ranges[RANGEHI].resetRange || buttonPress))
+     {
+         FindDayMax(beginningOfDay, TimeCopy[0], TimeCopy, HighPrices);
+         if (ObjectFind(0, Prefix + "_DayRangeHigh") == 0) ObjectDelete(0, Prefix + "_DayRangeHigh");
+         if (ObjectFind(0, Prefix + "_DayHighArrow") == 0) ObjectDelete(0, Prefix + "_DayHighArrow");
+         ObjectCreate(0, Prefix + "_DayRangeHigh", OBJ_TREND, 0, ranges[RANGEHI].rangeTime, ranges[RANGEHI].rangeLimit, beginningOfDay + 19*60*60, ranges[RANGEHI].rangeLimit);
+         ObjectSetInteger(0, Prefix + "_DayRangeHigh", OBJPROP_COLOR, _rangeLinesColor);
+         ObjectSet(Prefix + "_DayRangeHigh", OBJPROP_RAY, false);
+         ObjectCreate(0, Prefix + "_DayHighArrow", OBJ_ARROW_RIGHT_PRICE, 0, beginningOfDay + 19 * 60 *60 +15*60, ranges[RANGEHI].rangeLimit);
+         ObjectSetInteger(0, Prefix + "_DayHighArrow", OBJPROP_COLOR, Blue);
+         CreatePendingOrdersForRange(ranges[RANGEHI].rangeLimit, OP_BUYSTOP, _setPendingOrdersOnRanges, _accountForSpreadOnPendingBuyOrders, _marginForPendingRangeOrders, spread);
+         ranges[RANGEHI].resetRange = false;
+     }
    ObjectSetInteger(0, rngButtonName, OBJPROP_STATE,false);
    
 }
-   
-void FindDayMinMax(datetime start, datetime end, datetime& TimeCopy[], double& HighPrices[], double& LowPrices[])
+bool RangeIsActive(int highOrLow)
+{
+   Range thisRange = ranges[highOrLow];
+   if (thisRange.pendngRangeOrderId == 0) return false;
+   Position * thisTrade = broker.GetTrade(thisRange.pendngRangeOrderId);
+   bool isPending = thisTrade.IsPending;
+   delete(thisTrade);
+   return (!isPending);
+}
+void FindDayMin(datetime start, datetime end, datetime& TimeCopy[],  double& LowPrices[])
+{
+   ranges[RANGELO].rangeLimit = 9999.99;
+   datetime now = TimeCopy[0];
+   if (now < end) end = now;
+   int candlePeriod = TimeCopy[0] - TimeCopy[1];
+   int interval = (now - start)/ candlePeriod; 
+   while(TimeCopy[interval] <= end && interval > 0)
+     {
+         if (LowPrices[interval] < ranges[RANGELO].rangeLimit)
+         {
+            ranges[RANGELO].rangeLimit = LowPrices[interval];
+            ranges[RANGELO].rangeTime = TimeCopy[interval];
+         }
+         interval--;
+     }
+}   
+void FindDayMax(datetime start, datetime end, datetime& TimeCopy[], double& HighPrices[])
 {
    ranges[RANGEHI].rangeLimit = 0.0;
-   ranges[RANGELO].rangeLimit = 9999.99;
    datetime now = TimeCopy[0];
    if (now < end) end = now;
    int candlePeriod = TimeCopy[0] - TimeCopy[1];
@@ -1511,11 +1610,6 @@ void FindDayMinMax(datetime start, datetime end, datetime& TimeCopy[], double& H
          {
             ranges[RANGEHI].rangeLimit = HighPrices[interval];
             ranges[RANGEHI].rangeTime = TimeCopy[interval];
-         }
-         if (LowPrices[interval] < ranges[RANGELO].rangeLimit)
-         {
-            ranges[RANGELO].rangeLimit = LowPrices[interval];
-            ranges[RANGELO].rangeTime = TimeCopy[interval];
          }
          interval--;
      }
@@ -2015,6 +2109,11 @@ bool ChartForegroundSet(const bool value,const long chart_ID=0)
        caughtTwoMinThisBar = true;
       for (int index = RANGEHI; index <= RANGELO; index++)
       {
+         if(DEBUG_RANGELINES)
+           {
+            PrintFormat("Two Minute Check for %s: Order ID: %i, resetRange: %s", 
+               index == RANGEHI? "RANGEHI":"RANGELO", ranges[index].pendngRangeOrderId, ranges[index].resetRange?"true":"false");
+           }
          if (ranges[index].pendngRangeOrderId != 0)
          {
             Position * pendingTrade = broker.GetTrade(ranges[index].pendngRangeOrderId);
@@ -2022,7 +2121,7 @@ bool ChartForegroundSet(const bool value,const long chart_ID=0)
             {
                broker.DeletePendingTrade(pendingTrade);
                ranges[index].pendngRangeOrderId = 0;
-               resetRangePendingOrders = true;
+               ranges[index].resetRange = true;
             }
             if (CheckPointer(pendingTrade) != POINTER_INVALID) delete(pendingTrade);
          }
@@ -2050,7 +2149,7 @@ bool ChartForegroundSet(const bool value,const long chart_ID=0)
          if (CheckPointer(limitTrade) == POINTER_INVALID) continue; //defensive programming!
          if (!limitTrade.IsPending) //then we have an active RBO trade
          {
-            if(((ranges[index].rangeLimit - close) * multiplier) < .000005) cbir = true;
+            if(((ranges[index].rangeLimit - close) * multiplier) > .000005) cbir = true;
             rangeLimit = ranges[index].rangeLimit;
             closeOnLine = CheckForCloseOnLine(close, rangeLimit);
          }
@@ -2080,3 +2179,33 @@ bool ChartForegroundSet(const bool value,const long chart_ID=0)
    return (delta < 0.000005); // double values may not be precisely equal, but if the difference is less than the smallest change, 
    // they are essentially equal.
  }
+ 
+ void PerformNewBar()
+      {
+         alertedThisBar = false;
+         caughtTwoMinThisBar = false;
+         CheckForCBIR();
+         UpdateGV();
+
+ 
+        
+         if (Time[0] >= endOfDay)
+         {
+           endOfDay += 24*60*60;
+           CleanupEndOfDay();
+           beginningOfDay += 24*60*60;
+         }
+         
+  
+         if (ranges[RANGELO].resetRange || ranges[RANGEHI].resetRange)
+         {
+            if(DEBUG_RANGELINES)
+            {
+               PrintFormat("Reseting Range Lines");
+               PrintFormat ("RANGELO orderID: %i, resetRange = %s", ranges[RANGELO].pendngRangeOrderId, ranges[RANGELO].resetRange?"true":"false");
+               PrintFormat ("RANGEHI orderID: %i, resetRange = %s", ranges[RANGEHI].pendngRangeOrderId, ranges[RANGEHI].resetRange?"true":"false");
+            
+            }
+            PlotRangeLines();
+         }
+      }

@@ -17,6 +17,7 @@ private:
 public:
                      Position();
                     ~Position();
+                    Position(const Position & source);
                      int TicketId;
                      string Symbol;
                     datetime OrderEntered;
@@ -43,3 +44,20 @@ Position::~Position()
   {
   }
 //+------------------------------------------------------------------+
+Position::Position(const Position  &source)
+{
+   
+   ClosePrice = source.ClosePrice;
+   IsPending = source.IsPending;
+   LotSize = source.LotSize;
+   OpenPrice = source.OpenPrice;
+   OrderClosed = source.OrderClosed;
+   OrderEntered = source.OrderEntered;
+   OrderOpened = source.OrderOpened;
+   OrderType = source.OrderType;
+   StopPrice = source.StopPrice;
+   Symbol = source.Symbol;
+   TakeProfitPrice = source.TakeProfitPrice;
+   TicketId = source.TicketId;
+   
+}

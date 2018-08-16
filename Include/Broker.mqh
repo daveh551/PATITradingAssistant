@@ -45,7 +45,8 @@ public:
                         Position * newTrade = new Position();
                         newTrade.TicketId = OrderTicket();
                         newTrade.OrderType = OrderType();
-                        newTrade.IsPending = newTrade.OrderType != OP_BUY && newTrade.OrderType != OP_SELL;
+                        //newTrade.IsPending = newTrade.OrderType != OP_BUY && newTrade.OrderType != OP_SELL;
+                        newTrade.IsPending = (newTrade.OrderType > OP_SELL);
                         newTrade.Symbol = NormalizeSymbol(OrderSymbol());
                         newTrade.OrderOpened = OrderOpenTime();
                         newTrade.OpenPrice = OrderOpenPrice();
