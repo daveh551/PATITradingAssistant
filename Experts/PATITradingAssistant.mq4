@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.40.3alpha4"
+#property version   "0.40.4alpha"
 #property strict
 
 #include <stdlib.mqh>
@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.40.3alpha4";
+string Version="v0.40.4alpha";
 string NTIPrefix = "NTI_";
 int DFVersion = 2;
 
@@ -311,9 +311,35 @@ void OnChartEvent(const int id, const long& lParam, const double& dParam, const 
    {
       if (sParam == rngButtonName)
       {
-         PlotRangeLines(true);
+         if(IsDrawRangeButton())
+           {
+            PlotRangeLines(true);
+           }
+         else //Must be "Cancel Range Lines"
+           {
+            CancelRangeLines();
+           }
       }
    }
+}
+bool IsDrawRangeButton()
+{
+   string buttonTxt = ObjectGetString(0, rngButtonName, OBJPROP_TEXT);
+   return (buttonTxt == "Draw Range Lines");
+}
+
+void CancelRangeLines()
+{
+   for(int ix=RANGEHI;ix<=RANGELO;ix++)
+     {
+      ranges[ix].pendngRangeOrderId = 0;
+      ranges[ix].resetRange = false;
+     
+     }
+       if (ObjectFind(0, Prefix + "_DayRangeLow") == 0) ObjectDelete(0, Prefix + "_DayRangeLow");
+       if (ObjectFind(0, Prefix + "_DayLowArrow") == 0) ObjectDelete(0, Prefix + "_DayLowArrow");
+       if (ObjectFind(0, Prefix + "_DayRangeHigh") == 0) ObjectDelete(0, Prefix + "_DayRangeHigh");
+       if (ObjectFind(0, Prefix + "_DayHighArrow") == 0) ObjectDelete(0, Prefix + "_DayHighArrow");
 }
 //+------------------------------------------------------------------+
 void DeleteAllObjects()
@@ -866,8 +892,12 @@ void PrintConfigValues()
                         PrintFormat("RANGEHI orderID = %i", ranges[RANGEHI].pendngRangeOrderId);
                        }
                     
-                     for (int dx = 0; dx <= RANGEHI; dx++)
+                     for (int dx = 0; dx <= RANGELO; dx++)
                      {
+                        if(DEBUG_RANGELINES)
+                          {
+                           PrintFormat("TradeID %i against ranges[%s] %i", deleteTradeID, dx==RANGELO?"RANGELO":"RANGEHI", ranges[dx].pendngRangeOrderId);
+                          }
                         if (ranges[dx].pendngRangeOrderId == deleteTradeID)
                         {
                            ranges[dx].pendngRangeOrderId = 0;
@@ -893,7 +923,7 @@ void PrintConfigValues()
       Position * copyLastTick[];
       ArrayCopy(copyThisTick,activeTradeIdsThisTick);
       ArrayResize(copyLastTick,totalActiveTradeIdsThisTick);
-      for(int ix=0;ix<totalActiveTradeIdsThisTick;ix++)
+      for(int ix=0;ix<totalActiveTrades;ix++)
         {
          if(CheckPointer(activeTradesLastTick[ix]) == POINTER_DYNAMIC)
            {
@@ -924,7 +954,7 @@ void PrintConfigValues()
                              {
                              PrintFormat("totalActiveTrades = %i, totalActiveTradesIdsThisTick = %i", totalActiveTrades, totalActiveTradeIdsThisTick);
                              // Dump the two arrays
-                              for(int dx=0;dx<ArraySize(copyLastTick);dx++)
+                              for(int dx=0;dx<totalActiveTrades;dx++)
                                 {
                                  if(CheckPointer(copyLastTick[dx]) == POINTER_DYNAMIC)
                                     PrintFormat("Last Tick TradeId[%i]: %i", dx, copyLastTick[dx].TicketId);
@@ -933,7 +963,7 @@ void PrintConfigValues()
                                 }
                               for(int dx=0;dx<ArraySize(copyThisTick);dx++)
                                 {
-                                 PrintFormat("ThisTick[i%] TradeID = %i", dx, copyThisTick[dx]);
+                                 PrintFormat("ThisTick[%i] TradeID = %i", dx, copyThisTick[dx]);
                                 }
                              }
                            HandlePendingTradeGoneActive();
@@ -2107,6 +2137,10 @@ bool ChartForegroundSet(const bool value,const long chart_ID=0)
   if (((TimeCurrent() - Time[0]) > 13*60) && !caughtTwoMinThisBar)  //Assuming 15-minute bar - so we're in the last 2 min
    {
        caughtTwoMinThisBar = true;
+       if (!_showDrawRangeButton) // then the button isn't there to manipulate, and neither is anything else
+         return;
+      ObjectSetString(0, rngButtonName, OBJPROP_TEXT, "Cancel Range Lines");
+      ObjectSetInteger(0, rngButtonName, OBJPROP_BGCOLOR, clrYellow);
       for (int index = RANGEHI; index <= RANGELO; index++)
       {
          if(DEBUG_RANGELINES)
@@ -2117,7 +2151,12 @@ bool ChartForegroundSet(const bool value,const long chart_ID=0)
          if (ranges[index].pendngRangeOrderId != 0)
          {
             Position * pendingTrade = broker.GetTrade(ranges[index].pendngRangeOrderId);
-            if ((pendingTrade != NULL) && pendingTrade.IsPending)
+            if (pendingTrade.OrderClosed != 0) // then order has already been delete/closed
+            {
+               ranges[index].pendngRangeOrderId = 0;
+               ranges[index].resetRange = false;
+            }
+            else if ((pendingTrade != NULL) && pendingTrade.IsPending)
             {
                broker.DeletePendingTrade(pendingTrade);
                ranges[index].pendngRangeOrderId = 0;
@@ -2139,6 +2178,7 @@ bool ChartForegroundSet(const bool value,const long chart_ID=0)
    double close = Close[1]; //closing price of previous candle - is it inside range?
    double rangeLimit;
    Position * limitTrade;
+   int limitTradeId = 0;
    for (int index = RANGEHI; index <= RANGELO; index++)
    {
       if (ranges[index].pendngRangeOrderId != 0)
@@ -2147,9 +2187,17 @@ bool ChartForegroundSet(const bool value,const long chart_ID=0)
          if (index == RANGELO) multiplier = -1.0;
          limitTrade = broker.GetTrade(ranges[index].pendngRangeOrderId);
          if (CheckPointer(limitTrade) == POINTER_INVALID) continue; //defensive programming!
-         if (!limitTrade.IsPending) //then we have an active RBO trade
+         if (limitTrade.OrderClosed != 0) //then order has been closed
          {
-            if(((ranges[index].rangeLimit - close) * multiplier) > .000005) cbir = true;
+            ranges[index].pendngRangeOrderId = 0;
+         }
+         else if (!limitTrade.IsPending) //then we have an active RBO trade
+         {
+            if(((ranges[index].rangeLimit - close) * multiplier) > .000005)
+            {
+               cbir = true;
+               limitTradeId = limitTrade.TicketId;
+            }
             rangeLimit = ranges[index].rangeLimit;
             closeOnLine = CheckForCloseOnLine(close, rangeLimit);
          }
@@ -2164,11 +2212,13 @@ bool ChartForegroundSet(const bool value,const long chart_ID=0)
    if (!cbir) return;
    if (_alertOnCBIR) 
    {
-      Alert(Symbol(), " closed at ", DoubleToStr(close, 5), " (inside range limit of ", DoubleToStr(rangeLimit, 5));
+      Alert(Symbol(), " closed candle at ", DoubleToStr(close, 5), " (inside range limit of ", DoubleToStr(rangeLimit, 5), ")");
    }
    if (_autoCloseOnCBIR)
    {
+      PrintFormat("Closing trade %i because it ended the candle inside the range (CBIR)", limitTradeId);
       //Close trade
+      broker.CloseTrade(limitTradeId);
    }
    
  }
@@ -2185,6 +2235,11 @@ bool ChartForegroundSet(const bool value,const long chart_ID=0)
          alertedThisBar = false;
          caughtTwoMinThisBar = false;
          CheckForCBIR();
+         if(_showDrawRangeButton)
+           {
+            ObjectSetString(0,rngButtonName, OBJPROP_TEXT, "Draw Range Lines");
+            ObjectSetInteger(0,rngButtonName, OBJPROP_BGCOLOR, clrLightGray);
+           }
          UpdateGV();
 
  
