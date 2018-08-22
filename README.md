@@ -1,8 +1,16 @@
+# RELEASE NOTES for v 0.34.2 8/22/2018
+
+This is a very minor release with a fix for a minor issue that I discovered in v 0.34 (and v 0.34.1), and a minor enhancement suggested by user Tim Black (@IsItCoffeeYet) that allows control of the size of screen shot captures.
+
+The design for the "Draw Range Lines" feature was to have the line drawn extend to the end of the New York session, i.e., approximately 5:00 PM Eastern Time. At the time I implemented it, I was using a server that was set to New York time, and the implementation worked as expected. I recently switched to a server that was set to GMT, and discovered that my range lines were ending at around noon local time, and, occassionally, disappearing almost completely.  Since determining what time zone the server time is running is tricky, I implemented a work around in v 0.34.2 that makes sure that the line is drawn at least 5 hours past the current candle (assuming 15 minute time frames.)
+
+In the earlier implementations of the ScreenCaptureFiles feature, the chart height and width as displayed on the terminal was used for the capture file.  Tim Black pointed out that you can specify the pixel width and height of the area to be captured at run time independent of the area displayed on the terminal. Version 0.34.2 adds two new integer Configuration variables, "ScreenShotHeight" and "ScreenShotWidth". If those variables are 0, then the actual chart height and width will be used.  If they have a value, then the height and width of the captured file will be set to those values. This allows capturing wide screen images even if you're not using that much screen real estate in your display.
+
 # RELEASE NOTES for v 0.34.1 10/15/2017
 
 This release has fixes for a couple minor bugs that slipped out in v 0.34
 
-## Missing "Draw Range Lines Button 
+## Missing "Draw Range Lines" Button 
 
 In v 0.34, if the Trading Assistant is left running overnight, the end-of-day clean up routine will remove the "Draw Range Lines" button when it cleans up everything else.  The bug fix redraws it after the clean up.
 
