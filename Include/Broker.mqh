@@ -45,7 +45,8 @@ public:
                         Position * newTrade = new Position();
                         newTrade.TicketId = OrderTicket();
                         newTrade.OrderType = OrderType();
-                        newTrade.IsPending = newTrade.OrderType != OP_BUY && newTrade.OrderType != OP_SELL;
+                        //newTrade.IsPending = newTrade.OrderType != OP_BUY && newTrade.OrderType != OP_SELL;
+                        newTrade.IsPending = (newTrade.OrderType > OP_SELL);
                         newTrade.Symbol = NormalizeSymbol(OrderSymbol());
                         newTrade.OrderOpened = OrderOpenTime();
                         newTrade.OpenPrice = OrderOpenPrice();
@@ -69,6 +70,8 @@ public:
                     }
                     virtual void SetSLandTP(Position *trade)
                     {
+                     PrintFormat("Entered broker.SetSLandTP(%i)", trade.TicketId);
+                     PrintFormat("%s price=%f, stop=%f, TP=%f", trade.Symbol, trade.OpenPrice, trade.StopPrice, trade.TakeProfitPrice);
                      SelectOrderByTicket(trade.TicketId);
                      if ((trade.StopPrice == OrderStopLoss()) &&
                         trade.TakeProfitPrice == OrderTakeProfit())
@@ -76,6 +79,7 @@ public:
                         Print(trade.Symbol + ": Not sending order to broker because SL and TP already set");
                         return;
                      }
+                     PrintFormat("Calling OrderModifyReliable()");
                      if (!OrderModifyReliable(trade.TicketId,
                         trade.OpenPrice,
                         trade.StopPrice,
@@ -88,12 +92,13 @@ public:
                     
                     virtual void CreateOrder (Position * trade)
                     {
+                        int tradeId;
                         if (trade.LotSize == 0.0)
                           {
                            Alert("Trade with zero lot size cannot be entered.");
                            return;
                           }
-                        OrderSendReliable(
+                        tradeId = OrderSendReliable(
                            symbolPrefix + trade.Symbol + symbolSuffix, 
                            trade.OrderType,
                            trade.LotSize,
@@ -103,7 +108,7 @@ public:
                            0.0,
                            "",
                            0);
-                           
+                         if (tradeId != -1) trade.TicketId = tradeId;
                     }
                     
                     virtual void DeletePendingTrade ( Position * trade)
@@ -115,7 +120,13 @@ public:
                           }
                         OrderDelete(trade.TicketId);
                     }
-                    virtual Position * FindLastTrade()
+                    
+                    virtual void CloseTrade(int ticketId)
+                    {
+                        SelectOrderByTicket(ticketId);
+                        OrderCloseReliable(ticketId, OrderLots(), (OrderType() == OP_BUY)?Bid:Ask, 0);
+                    }
+                    virtual Position * FindLastTrade() 
                     {
                         for(int ix=OrdersHistoryTotal()-1;ix>=0;ix--)
                           {
