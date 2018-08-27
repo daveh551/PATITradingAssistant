@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.40.4alpha"
+#property version   "0.41.0alpha"
 #property strict
 
 #include <stdlib.mqh>
@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.40.4alpha";
+string Version="v0.41.0alpha";
 string NTIPrefix = "NTI_";
 int DFVersion = 2;
 
@@ -77,6 +77,8 @@ extern double MinRewardRatio = 1.5;
 extern string ConfigureRangeLines = "===Configure Draw Range Lines feature===";
 extern bool ShowDrawRangeButton = true;
 extern color RangeLinesColor = Yellow;
+extern color RangeLineLabelColor = Blue;
+extern int RangeLineLabelSize = 1;
 extern bool SetPendingOrdersOnRanges = false;
 extern double MarginForPendingRangeOrders = 1.0;
 extern bool ObserveTwoMinuteRule = true;
@@ -92,6 +94,8 @@ extern string ConfigureScreenShotCapture = "===Configure Screen Shot Capture==="
 extern bool CaptureScreenShotsInFiles = true;
 extern int ScreenShotWidth = 0;
 extern int ScreenShotHeight = 0;
+extern int DaysToKeepScreenShots = 0;
+extern string SortScreenShotsBy = "None";
 
 
 const double  GVUNINIT= -99999999;
@@ -131,11 +135,16 @@ bool _accountForSpreadOnPendingBuyOrders;
 double _pendingLotSize;
 double _marginForPendingRangeOrders;
 color _rangeLinesColor;
+color _rangeLineLabelColor;
+int _rangeLineLabelSize;
 bool _cancelPendingTrades;
 bool _makeTickVisible;
 bool _captureScreenShotsInFiles;
 int _screenShotWidth;
 int _screenShotHeight;
+int _daysToKeepScreenShots;
+string _sortScreenShotsBy;
+
 
 
 bool alertedThisBar = false;
@@ -145,10 +154,13 @@ int longTradeNumberForDay = 0;
 int shortTradeNumberForDay =0;
 datetime endOfDay;
 datetime beginningOfDay;
+datetime today;
 string normalizedSymbol;
 string saveFileName;
 string configFileName;
 string globalConfigFileName;
+string screenShotDirectory;
+string screenShotRootDirectory;
 datetime lastUpdateTime;
 int lastTradeId = 0;
 bool lastTradePending = false;
@@ -169,7 +181,20 @@ int totalNewTrades = 0;
 Position * newTrades[]; // new trades since last tick
 int newTradesArraySize = 0;
 int tickNumber = 0;
-
+string MonthString[12] = {
+"JAN",
+"FEB",
+"MAR",
+"APR",
+"MAY",
+"JUN",
+"JUL",
+"AUG",
+"SEP",
+"OCT",
+"NOV",
+"DEC"
+};
 struct Range
   {
    double rangeLimit;
@@ -464,6 +489,11 @@ void Initialize()
   dtStruct.sec = 0;
   endOfDay = StructToTime(dtStruct) +(24*60*60) + (_endOfDayOffsetHours * 60 * 60);
   beginningOfDay = StructToTime(dtStruct) + (_beginningOfDayOffsetHours * 60 * 60);
+  today = StructToTime(dtStruct);
+  if(_captureScreenShotsInFiles)
+    {
+     SetupScreenShotDirectories();
+    }
   longTradeNumberForDay = 0;
   shortTradeNumberForDay = 0;
    InitializeTradeArrays();  
@@ -561,11 +591,15 @@ void CopyInitialConfigVariables()
    _pendingLotSize = PendingLotSize;
    _marginForPendingRangeOrders = MarginForPendingRangeOrders;
    _rangeLinesColor = RangeLinesColor;
+   _rangeLineLabelColor = RangeLineLabelColor;
+   _rangeLineLabelSize = RangeLineLabelSize;
    _cancelPendingTrades = CancelPendingTrades;
    _makeTickVisible = MakeTickVisible;
    _captureScreenShotsInFiles = CaptureScreenShotsInFiles;
    _screenShotWidth = ScreenShotWidth;
    _screenShotHeight = ScreenShotHeight;
+   _daysToKeepScreenShots = DaysToKeepScreenShots;
+   _sortScreenShotsBy =  SortScreenShotsBy; StringToLower(_sortScreenShotsBy);
 
 }
 
@@ -586,13 +620,21 @@ void ApplyConfiguration()
 void ApplyConfiguration(string fileName)
 {
    if (!FileIsExist(fileName)) return;
+   if(DEBUG_CONFIG)
+     {
+      PrintFormat("Attempting to open config file %s for pair %s", fileName, Symbol());
+     }
    int fileHandle = FileOpen(fileName, FILE_ANSI | FILE_TXT | FILE_READ);
    if (fileHandle == -1) 
    {
       int errcode = GetLastError();
-      Print("Failed to open configFile. Error = " + IntegerToString(errcode));
+      PrintFormat("Failed to open configFile %s. Error = %i", fileName, errcode);
       return;
    }
+   if(DEBUG_CONFIG)
+     {
+      PrintFormat("Successfully opened configFile %s for pair %s", fileName, Symbol());
+     }
    while(!FileIsEnding(fileHandle))
      {
       string line = FileReadString(fileHandle);
@@ -730,6 +772,14 @@ void ApplyConfiguration(string fileName)
                {
                   _rangeLinesColor =  StringToColor(value);
                }
+        else if (var == "RangeLineLabelColor")
+               {
+                  _rangeLineLabelColor =  StringToColor(value);
+               }
+        else if (var == "RangeLineLabelSize")
+               {
+                  _rangeLineLabelSize =  StringToColor(value);
+               }
         else if (var == "CancelPendingTrades")
                {
                   _cancelPendingTrades = (bool) StringToInteger(value);
@@ -746,10 +796,25 @@ void ApplyConfiguration(string fileName)
                {
                  _screenShotHeight = StringToInteger(value);
                }
+        else if (var == "DaysToKeepScreenShots")
+               {
+                  _daysToKeepScreenShots = StringToInteger(value);
+               }
+        else if (var == "SortScreenShotsBy")
+               {
+                  StringToLower(value);
+                  _sortScreenShotsBy = value;
+               }
+
+               
         }
               
       }
    FileClose(fileHandle);
+   if(DEBUG_CONFIG)
+     {
+      PrintFormat("Closed configFile %s for pair %s", fileName, Symbol());
+     }
 }
 
 void SaveConfigurationFile()
@@ -792,10 +857,14 @@ void SaveConfigurationFile()
    FileWriteString(fileHandle, "PendingLotSize: " + DoubleToString( _pendingLotSize) + "\r\n");
    FileWriteString(fileHandle, "MarginForPendingRangeOrders: " + DoubleToString(_marginForPendingRangeOrders, 1) + "\r\n");
    FileWriteString(fileHandle, "RangeLinesColor: " + (string) _rangeLinesColor + "\r\n");
+   FileWriteString(fileHandle, "RangeLineLabelColor: " + (string) _rangeLineLabelColor + "\r\n");
+   FileWriteString(fileHandle, "RangeLineLabelSize: " + IntegerToString( _rangeLineLabelSize) + "\r\n");
    FileWriteString(fileHandle, "CancelPendingTrades: " + IntegerToString((int) _cancelPendingTrades) + "\r\n");
    FileWriteString(fileHandle, "CaptureScreenShotsInFiles: " + IntegerToString((int) _captureScreenShotsInFiles) + "\r\n");
    FileWriteString(fileHandle, "ScreenShotWidth: " + IntegerToString(_screenShotWidth) + "\r\n");
    FileWriteString(fileHandle, "ScreenShotHeight: " + IntegerToString(_screenShotHeight) + "\r\n");
+   FileWriteString(fileHandle, "DaysToKeepScreenShots: " + IntegerToString(_daysToKeepScreenShots) + "\r\n");
+   FileWriteString(fileHandle, "SortScreenShotsBy: " + _sortScreenShotsBy + "\r\n");
 
 
    
@@ -836,8 +905,13 @@ void PrintConfigValues()
    Print("PendingLotSize: " + DoubleToString( _pendingLotSize, 2) + "\r\n");
    Print("MarginForPendingRangeOrders: " + DoubleToString( _marginForPendingRangeOrders, 1) + "\r\n");
    Print("RangeLinesColor: " + (string) _rangeLinesColor + "\r\n");
+   Print("RangeLineLabelColor: " + (string) _rangeLineLabelColor + "\r\n");
+   Print("RangeLineLabelSize: " + IntegerToString( _rangeLineLabelSize) + "\r\n");
    Print("CancelPendingTrades: " + IntegerToString((int) _cancelPendingTrades) + "\r\n");
-   Print("CaptureScreenShotsInFiles: " + IntegerToString((int) _captureScreenShotsInFiles) + "\r\n");   
+   Print("CaptureScreenShotsInFiles: " + IntegerToString((int) _captureScreenShotsInFiles) + "\r\n"); 
+   Print("DaysToKeepScreenShots: " + IntegerToString(_daysToKeepScreenShots) + "\r\n"); 
+   Print("SortScreenShotsBy: " + _sortScreenShotsBy + "\r\n"); 
+  
 }
 
    void DrawRangeButton()
@@ -1353,6 +1427,78 @@ void HandleDeletedTrade()
 
 }
 
+void SetupScreenShotDirectories()
+{
+   screenShotRootDirectory = "ScreenShots";
+   if(!FileIsExist(screenShotRootDirectory))
+     {
+      if(!FolderCreate(screenShotRootDirectory))
+      {
+         Alert("FolderCreate for " + screenShotRootDirectory + " failed. Error= "+IntegerToString(GetLastError()));
+         screenShotDirectory = "";
+         return;
+      }
+     }
+   if(_sortScreenShotsBy == "none")
+     {
+      screenShotDirectory = screenShotRootDirectory + "\\";
+      return;
+     }
+   if(_sortScreenShotsBy == "pair" || _sortScreenShotsBy == "symbol")
+     {
+      string folderName = screenShotRootDirectory + "\\" + normalizedSymbol;
+      if (!FileIsExist(folderName))
+      {
+         if(!FolderCreate(folderName))
+         {
+            Alert("FolderCreate for " + folderName + " failed. Error= " + IntegerToString(GetLastError()));
+            screenShotDirectory = screenShotRootDirectory + "\\";
+            return;
+         }
+      }
+      screenShotDirectory = folderName + "\\";
+      return;
+     }
+   if(_sortScreenShotsBy == "date")
+     {
+         MqlDateTime todaysDate;
+         TimeToStruct(today, todaysDate);
+         string yearFolder = screenShotRootDirectory + "\\" + IntegerToString(todaysDate.year);
+         if(!FileIsExist(yearFolder))
+         {
+            if(!FolderCreate(yearFolder))
+              {
+               Alert("FolderCreate for " + yearFolder + " failed. Error= " + IntegerToString(GetLastError()));
+               screenShotDirectory = screenShotRootDirectory + "\\";
+               return;
+              }
+         }
+         string monthFolder = yearFolder + "\\" + StringSubstr(IntegerToString(todaysDate.mon+100),1,2) + "-" + MonthString[todaysDate.mon - 1];
+         if(!FileIsExist(monthFolder))
+           {
+            if(!FolderCreate(monthFolder))
+              {
+               Alert("FolderCreate for " + monthFolder + " failed. Error= " + IntegerToString(GetLastError()));
+               screenShotDirectory = screenShotRootDirectory + "\\";
+               return;
+              }
+           }
+           string dayFolder = monthFolder + "\\" + StringSubstr(IntegerToString(todaysDate.day + 100),1,2);
+           if(!FileIsExist(dayFolder))
+             {
+              if(!FolderCreate(dayFolder))
+                {
+                 Alert("FolderCreate for " + dayFolder + " failed. Error= " + IntegerToString(GetLastError()));
+                 screenShotDirectory = screenShotRootDirectory + "\\";
+                 return;
+                }
+             }
+             screenShotDirectory = dayFolder + "\\";
+             return;
+     }
+   Alert("Config variable SortScreenShotBy value \"" + _sortScreenShotsBy + "\" is unrecognized.");
+   screenShotDirectory = screenShotRootDirectory + "\\"; 
+}
 void CaptureScreenShot()
 {
    if(!_captureScreenShotsInFiles) return;
@@ -1367,6 +1513,7 @@ void CaptureScreenShot()
       StringReplace(fileName, ":", "_");
       fileName +=  (activeTrade.OrderType == OP_BUY)? (" L" +IntegerToString((long) longTradeNumberForDay)): (" S" + IntegerToString((long) shortTradeNumberForDay));
       fileName += ".png";
+      fileName = screenShotDirectory + fileName;
       if(DEBUG_ORDER)
         {
           Print("Capturing Screen shot into " + fileName );
@@ -1597,11 +1744,13 @@ void PlotRangeLines(bool buttonPress = false)
        FindDayMin(beginningOfDay, TimeCopy[0], TimeCopy, LowPrices);
        if (ObjectFind(0, Prefix + "_DayRangeLow") == 0) ObjectDelete(0, Prefix + "_DayRangeLow");
        if (ObjectFind(0, Prefix + "_DayLowArrow") == 0) ObjectDelete(0, Prefix + "_DayLowArrow");
-      ObjectCreate(0, Prefix + "_DayRangeLow", OBJ_TREND, 0, ranges[RANGELO].rangeTime, ranges[RANGELO].rangeLimit, beginningOfDay + 19*60*60, ranges[RANGELO].rangeLimit);
+      ObjectCreate(0, Prefix + "_DayRangeLow", OBJ_TREND, 0, ranges[RANGELO].rangeTime, ranges[RANGELO].rangeLimit, eod, ranges[RANGELO].rangeLimit);
       ObjectSetInteger(0, Prefix + "_DayRangeLow", OBJPROP_COLOR, _rangeLinesColor);
       ObjectSet(Prefix + "_DayRangeLow", OBJPROP_RAY, false);
-      ObjectCreate(0, Prefix + "_DayLowArrow", OBJ_ARROW_RIGHT_PRICE, 0, beginningOfDay + 19 * 60 *60 +15*60, ranges[RANGELO].rangeLimit);
-      ObjectSetInteger(0, Prefix + "_DayLowArrow", OBJPROP_COLOR, Blue);
+      ObjectCreate(0, Prefix + "_DayLowArrow", OBJ_ARROW_RIGHT_PRICE, 0, eod +15*60, ranges[RANGELO].rangeLimit);
+      ObjectSetInteger(0, Prefix + "_DayLowArrow", OBJPROP_COLOR, _rangeLineLabelColor);
+      ObjectSetInteger(0, Prefix + "_DayLowArrow", OBJPROP_WIDTH, _rangeLineLabelSize);
+     
       CreatePendingOrdersForRange(ranges[RANGELO].rangeLimit, OP_SELLSTOP, _setPendingOrdersOnRanges, _accountForSpreadOnPendingBuyOrders, _marginForPendingRangeOrders, spread);
       ranges[RANGELO].resetRange = false;
      }
@@ -1610,11 +1759,12 @@ void PlotRangeLines(bool buttonPress = false)
          FindDayMax(beginningOfDay, TimeCopy[0], TimeCopy, HighPrices);
          if (ObjectFind(0, Prefix + "_DayRangeHigh") == 0) ObjectDelete(0, Prefix + "_DayRangeHigh");
          if (ObjectFind(0, Prefix + "_DayHighArrow") == 0) ObjectDelete(0, Prefix + "_DayHighArrow");
-         ObjectCreate(0, Prefix + "_DayRangeHigh", OBJ_TREND, 0, ranges[RANGEHI].rangeTime, ranges[RANGEHI].rangeLimit, beginningOfDay + 19*60*60, ranges[RANGEHI].rangeLimit);
+         ObjectCreate(0, Prefix + "_DayRangeHigh", OBJ_TREND, 0, ranges[RANGEHI].rangeTime, ranges[RANGEHI].rangeLimit, eod, ranges[RANGEHI].rangeLimit);
          ObjectSetInteger(0, Prefix + "_DayRangeHigh", OBJPROP_COLOR, _rangeLinesColor);
          ObjectSet(Prefix + "_DayRangeHigh", OBJPROP_RAY, false);
-         ObjectCreate(0, Prefix + "_DayHighArrow", OBJ_ARROW_RIGHT_PRICE, 0, beginningOfDay + 19 * 60 *60 +15*60, ranges[RANGEHI].rangeLimit);
-         ObjectSetInteger(0, Prefix + "_DayHighArrow", OBJPROP_COLOR, Blue);
+         ObjectCreate(0, Prefix + "_DayHighArrow", OBJ_ARROW_RIGHT_PRICE, 0, eod +15*60, ranges[RANGEHI].rangeLimit);
+         ObjectSetInteger(0, Prefix + "_DayHighArrow", OBJPROP_COLOR, _rangeLineLabelColor);
+         ObjectSetInteger(0,Prefix + "_DayHighArrow", OBJPROP_WIDTH, _rangeLineLabelSize);
          CreatePendingOrdersForRange(ranges[RANGEHI].rangeLimit, OP_BUYSTOP, _setPendingOrdersOnRanges, _accountForSpreadOnPendingBuyOrders, _marginForPendingRangeOrders, spread);
          ranges[RANGEHI].resetRange = false;
      }
