@@ -1363,7 +1363,7 @@ int OrderReSendReliable(string symbol, int cmd, double volume, double price,
 		OrderReliablePrint("failed trade: " + OrderReliable_CommandString(cmd) + " " + symbol + 
 							"@" + price + " tp@" + takeprofit + " sl@" + stoploss);
       OrderReliablePrint("failed to execute OP_BUY/OP_SELL, after " + cnt + " retries");
-		OrderReliablePrint("last error: " + OrderReliableErrTxt(err)+ " (price = "+ price + ", Ask = "+ Ask +", and Bid = "+ Bid +")"); 
+		OrderReliablePrint("last error: " + OrderReliableErrTxt(err)+ " (price = "+ DoubleToStr(price, 5) + ", Ask = "+ DoubleToStr(Ask,5) +", and Bid = "+ DoubleToStr(Bid, 5) +")"); 
 		return(-1); 
 	}
 	return (-1);

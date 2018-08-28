@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.41.0alpha"
+#property version   "0.41.1beta"
 #property strict
 
 #include <stdlib.mqh>
@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.41.0alpha";
+string Version="v0.41.1beta";
 string NTIPrefix = "NTI_";
 int DFVersion = 2;
 
@@ -482,14 +482,9 @@ void Initialize()
   saveFileName = Prefix + normalizedSymbol + "_SaveFile.txt";
   stopLoss = CalculateStop(normalizedSymbol) * AdjPoint;
   noEntryPad = _minNoEntryPad * AdjPoint;
-  MqlDateTime dtStruct;
-  TimeToStruct(TimeCurrent(), dtStruct);
-  dtStruct.hour = 0;
-  dtStruct.min = 0;
-  dtStruct.sec = 0;
-  endOfDay = StructToTime(dtStruct) +(24*60*60) + (_endOfDayOffsetHours * 60 * 60);
-  beginningOfDay = StructToTime(dtStruct) + (_beginningOfDayOffsetHours * 60 * 60);
-  today = StructToTime(dtStruct);
+  today = DateFromTime(TimeCurrent());
+  endOfDay = today +(24*60*60) + (_endOfDayOffsetHours * 60 * 60);
+  beginningOfDay = today + (_beginningOfDayOffsetHours * 60 * 60);
   if(_captureScreenShotsInFiles)
     {
      SetupScreenShotDirectories();
@@ -523,10 +518,20 @@ void Initialize()
    DrawRangeButton();
   }
  
-  
+ //For testing - remove when done
+ DeleteOldScreenShots(); 
 
 }
 
+datetime DateFromTime(datetime time)
+{
+  MqlDateTime dtStruct;
+  TimeToStruct(time, dtStruct);
+  dtStruct.hour = 0;
+  dtStruct.min = 0;
+  dtStruct.sec = 0;
+  return StructToTime(dtStruct);
+}
 void InitializeTradeArrays()
 {
   totalActiveTradeIdsThisTick = 0;
@@ -1429,16 +1434,14 @@ void HandleDeletedTrade()
 
 void SetupScreenShotDirectories()
 {
+   if(!_captureScreenShotsInFiles) return;
    screenShotRootDirectory = "ScreenShots";
-   if(!FileIsExist(screenShotRootDirectory))
-     {
-      if(!FolderCreate(screenShotRootDirectory))
-      {
-         Alert("FolderCreate for " + screenShotRootDirectory + " failed. Error= "+IntegerToString(GetLastError()));
-         screenShotDirectory = "";
-         return;
-      }
-     }
+   if (!CreateDirectory(screenShotRootDirectory))
+   {
+      screenShotRootDirectory = "";
+      screenShotDirectory = screenShotRootDirectory;
+   }
+
    if(_sortScreenShotsBy == "none")
      {
       screenShotDirectory = screenShotRootDirectory + "\\";
@@ -1447,55 +1450,15 @@ void SetupScreenShotDirectories()
    if(_sortScreenShotsBy == "pair" || _sortScreenShotsBy == "symbol")
      {
       string folderName = screenShotRootDirectory + "\\" + normalizedSymbol;
-      if (!FileIsExist(folderName))
-      {
-         if(!FolderCreate(folderName))
-         {
-            Alert("FolderCreate for " + folderName + " failed. Error= " + IntegerToString(GetLastError()));
-            screenShotDirectory = screenShotRootDirectory + "\\";
-            return;
-         }
-      }
-      screenShotDirectory = folderName + "\\";
+      if (CreateDirectory(folderName)) screenShotDirectory = folderName + "\\";
+      else screenShotDirectory = screenShotRootDirectory + "\\";
       return;
      }
-   if(_sortScreenShotsBy == "date")
-     {
-         MqlDateTime todaysDate;
-         TimeToStruct(today, todaysDate);
-         string yearFolder = screenShotRootDirectory + "\\" + IntegerToString(todaysDate.year);
-         if(!FileIsExist(yearFolder))
-         {
-            if(!FolderCreate(yearFolder))
-              {
-               Alert("FolderCreate for " + yearFolder + " failed. Error= " + IntegerToString(GetLastError()));
-               screenShotDirectory = screenShotRootDirectory + "\\";
-               return;
-              }
-         }
-         string monthFolder = yearFolder + "\\" + StringSubstr(IntegerToString(todaysDate.mon+100),1,2) + "-" + MonthString[todaysDate.mon - 1];
-         if(!FileIsExist(monthFolder))
-           {
-            if(!FolderCreate(monthFolder))
-              {
-               Alert("FolderCreate for " + monthFolder + " failed. Error= " + IntegerToString(GetLastError()));
-               screenShotDirectory = screenShotRootDirectory + "\\";
-               return;
-              }
-           }
-           string dayFolder = monthFolder + "\\" + StringSubstr(IntegerToString(todaysDate.day + 100),1,2);
-           if(!FileIsExist(dayFolder))
-             {
-              if(!FolderCreate(dayFolder))
-                {
-                 Alert("FolderCreate for " + dayFolder + " failed. Error= " + IntegerToString(GetLastError()));
-                 screenShotDirectory = screenShotRootDirectory + "\\";
-                 return;
-                }
-             }
-             screenShotDirectory = dayFolder + "\\";
-             return;
-     }
+   if(_sortScreenShotsBy == "date") 
+   {
+      SetupScreenShotDirectoryByDate();
+      return;
+   }
    Alert("Config variable SortScreenShotBy value \"" + _sortScreenShotsBy + "\" is unrecognized.");
    screenShotDirectory = screenShotRootDirectory + "\\"; 
 }
@@ -1520,6 +1483,32 @@ void CaptureScreenShot()
         }
       ChartScreenShot(0, fileName, xPixels, yPixels);
 }
+
+void SetupScreenShotDirectoryByDate()
+{
+   if(!_captureScreenShotsInFiles) return;
+   MqlDateTime todaysDate;
+   TimeToStruct(today, todaysDate);
+   string yearFolder = screenShotRootDirectory + "\\" + IntegerToString(todaysDate.year);
+   string monthFolder = yearFolder + "\\" + StringSubstr(IntegerToString(todaysDate.mon+100),1,2) + "-" + MonthString[todaysDate.mon - 1];
+   string dayFolder = monthFolder + "\\" + StringSubstr(IntegerToString(todaysDate.day + 100),1,2);
+   if(!CreateDirectory(yearFolder) || !CreateDirectory(monthFolder) || !CreateDirectory(dayFolder))
+     {
+      screenShotDirectory = screenShotRootDirectory + "\\";
+      return;
+     }
+     screenShotDirectory = dayFolder + "\\";
+     return;
+}
+
+bool CreateDirectory(string directoryName)
+{
+   if(FileIsExist(directoryName))return true;
+   if(FolderCreate(directoryName)) return true;
+   Alert("FolderCreate for " + directoryName + " failed. Error= "+IntegerToString(GetLastError()));
+   return false;
+}
+
 int CalculateStop(string symbol)
 {
    int stop = _defaultStopPips;
@@ -1605,8 +1594,115 @@ void CleanupEndOfDay()
    DrawVersion();
    // Replace the Draw Range Button (if it's shown)
    if (_showDrawRangeButton) DrawRangeButton();
+   if(_daysToKeepScreenShots != 0)
+     {
+      DeleteOldScreenShots();
+     }
 }
 
+void DeleteOldScreenShots()
+{
+   DeleteOldScreenShots(screenShotRootDirectory + "\\");
+}
+
+void DeleteOldScreenShots(string directoryName)
+{
+   string file_name;
+   string InpFilter = directoryName +  "*";
+   string int_dir="";
+   string subDirectoriesToSearch[30];
+   int numberOfSubDirectories = 0;
+   int    i=1,pos=0,last_pos=-1;
+//--- search for the last backslash
+   while(!IsStopped())
+     {
+      pos=StringFind(InpFilter,"\\",pos+1);
+      if(pos>=0)
+         last_pos=pos;
+      else
+         break;
+     }
+//--- the filter contains the folder name
+   if(last_pos>=0)
+      int_dir=StringSubstr(InpFilter,0,last_pos+1);
+//--- get the search handle in the root of the local folder
+   long search_handle=FileFindFirst(InpFilter,file_name);
+   if(search_handle != INVALID_HANDLE)
+     {
+      do
+        {
+         ResetLastError();
+         string fullFilePath = int_dir  + file_name;
+         FileIsExist(fullFilePath);
+         bool fileIsDirectory = (GetLastError() == ERR_FILE_IS_DIRECTORY);
+         PrintFormat("%d: %s name = %s",i, fileIsDirectory ? "Directory" : "File", file_name);
+         i++;
+         
+         if(fileIsDirectory)
+           {
+            subDirectoriesToSearch[numberOfSubDirectories++] = fullFilePath;
+            continue;
+           }
+         else
+           {
+            if(!IsScreenShot(fullFilePath)) continue;
+            int fileAge = GetFileAge(fullFilePath);
+            if( fileAge > _daysToKeepScreenShots)
+              {
+               //Log it
+               PrintFormat("Deleting file %s %i days old", fullFilePath, fileAge);
+               FileDelete(fullFilePath);
+              }
+           }
+        }
+      while(FileFindNext(search_handle, file_name));
+     }
+     FileFindClose(search_handle);
+     if(numberOfSubDirectories > 0)
+       {
+         for(int ix=0;ix<numberOfSubDirectories;ix++)
+           {
+            DeleteOldScreenShots(subDirectoriesToSearch[ix]);
+           }
+        
+       }
+}
+
+bool IsScreenShot(const string fullFilePath)
+{
+   string fileName = "";
+    int    i=1,pos=0,last_pos=-1;
+//--- search for the last backslash
+   while(!IsStopped())
+     {
+      pos=StringFind(fullFilePath,"\\",pos+1);
+      if(pos>=0)
+         last_pos=pos;
+      else
+         break;
+     }
+   if(last_pos > 0) fileName = StringSubstr(fullFilePath, last_pos + 1);
+   StringToUpper(fileName);
+   if ( StringFind(fileName, ".PNG") != StringLen(fileName) - 4) return false;
+   if(StringFind(fileName,normalizedSymbol) < 0) return false;
+
+   return true;
+}
+
+int GetFileAge(const string fullFilePath)
+{
+   int handle = FileOpen(fullFilePath, FILE_READ);
+   if (handle == INVALID_HANDLE)
+   {
+      Alert("Unable to open " + fullFilePath + " in GetFileAge()");
+      return 0;
+   }
+   datetime creationTime = FileGetInteger(handle, FILE_CREATE_DATE);
+   FileClose(handle);
+   datetime fileCreateDate = DateFromTime(creationTime);
+   int age = (today - fileCreateDate)/(24*60*60);
+   return age;
+}
 void DeleteSaveFile()
 {
    if (FileIsExist(saveFileName))
@@ -2412,7 +2508,12 @@ bool ChartForegroundSet(const bool value,const long chart_ID=0)
            }
          UpdateGV();
 
- 
+         datetime thisDay = DateFromTime(Time[0]);
+         if(thisDay != today)
+           {
+            today = thisDay;
+            SetupScreenShotDirectoryByDate();
+           }
         
          if (Time[0] >= endOfDay)
          {
