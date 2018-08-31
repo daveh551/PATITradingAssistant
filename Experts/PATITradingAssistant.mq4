@@ -95,6 +95,7 @@ extern bool CaptureScreenShotsInFiles = true;
 extern int ScreenShotWidth = 0;
 extern int ScreenShotHeight = 0;
 extern int DaysToKeepScreenShots = 0;
+extern string SortScreenShotsDescription = "Valid values for the next variable are None, Date, Pair or Symbol";
 extern string SortScreenShotsBy = "None";
 
 

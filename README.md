@@ -1,8 +1,37 @@
+# RELEASE NOTES for v 0.41.1 8/28/2018
+
+This release adds some new features and makes some very significant improvements to existing features.
+
+## Range Lines
+
+The pending orders that are set when you click the "Draw Range Lines" button (if you have SetPendingOrders enabled) will now be automatically cancelled with 2 minutes to go in the candle to avoid a pending order being triggered in violation of the "Two Minute Rule" (no range break out trades are to be taken during the final two minutes of a candle).  Orders that are cancelled by this feature will be automatically re-set at the opening of the next candle.  This feature is controlled by the "ObserveTwoMinuteRule" configuration variable.
+
+Orders that have been set by pressing the "Draw Range Lines" button, but were then manually deleted, are not re-set at the start of the next candle.
+
+Realizing that there might be occasions where you want to prevent orders from being re-set (e.g., when a news event is coming up and you don't want to risk a pending order being taken in by a news spike), but when the pending orders have already been canceled by the TwoMinuteRule, I have changed the function of the Draw Range Button during the Two Minute interval.  At the time the pending orders are canceled, the "Draw Range Lines" button changes to a yellow background, and it's legend changes to "Cancel Range Lines".  If the button is clicked while it is in this state, it wil remove the range lines that have been set (the pending orders have already been canceled), and will prevent the orders from being re-set.
+
+In addition, trades that are entered as a result of a pending order on a range breakout being executed will be checked at the start of each candle for being back inside the range that it broke out of (a condition known as CBIR - Closed Back Inside Range).  If so, the trade can be automatically closed (if the AutoCloseOnCBIR configuration variable is set) or an alert will be issued (if AlertOnCBIR is set).  If neither variable is set, the check is not performed. Trades that close on the line will result in an alert being issued and will not be automatically closed.
+
+## Screen Capture
+
+There is a slightly breaking change to the way ScreenShot Capture files are handled.  In prior versions, all such files were saved directly to the Files directory in the MQL4 Data Folder tree.  Now, there is a screen shot root directory named "ScreenShots" added to the Files directory, and all ScreenShots are saved in this directory or a subdirectory underneath it, as described before.
+
+There is a new configuration variable named "SortScreenShotBy".  The valid values are "None", "Date", and either "Pair" or "Symbol" (which are synonymous, but I couldn't decide which made more sense, so I decided to accept them both.
+
+If the value is "None", then all screen shots are saved in the Files\ScreenShots directory with no organization. If the Date option is used, then a series of directories are added to the ScreenShots directory to mirror the date. There is a directory for the year (e.g., 2018), one for the month using a two-digit month number, a hyphen, and a 3 character English month abbreviation (e.g. "08-AUG"), and finally, a directory for each day of the month that the Trading Assistant is running, using a two digit number.  All trades that are taken on that day will appear in the corresponding folder. So, as I write this, it's August 28, 2018.  Today's trades are in Files\ScreenShots\2018\08-AUG\28.
+
+If the value of the SortScreenShotsBy variable is set to Pair or Symbol, then one directory will be created under the File\ScreenShots directory for each pair, and all screen shots captured for a given pair will be stored in that pair's directory.
+
+Note that, since the configuration variables are set for each pair that the trading assistant is running on, it is possible to mix these schemes, though I can't see a reason for it and it might be a little confusing.
+
+Secondly, one of the drawbacks to using auto-captured screen shots that I noted in the User's Guide is that the files can accumulate unnoticed and fill up your disk. This release adds a configuration variable "DaysToKeepScreenShots". If this is set to a non-zero value, then at the end of each trading day, a routine will run through the ScreenShots directory and all subdirectories recursively, and delete any screen shot file that is found that was created more than that many days ago. Again, this routine is running for each pair, and will only delete screen shots for that pair.  In order to be deleted, the file must be a leaf file (i.e., not a directory), must contain the pair name in its file name, it's file name must end in ".PNG", and today's date (using your server's idea of the date) minus the file creation time (which is established by your computer clock) must be greater than the value of the configuration variable.  This routine runs as part of the end-of-day cleanup, so the MetaTrader platform and the PATI Trading Assistant EA must be left running till the end of the day for it to run.
+
+There are also some minor enhancements. In the past, most processing takes place on each incoming tick of the price data.  I have observed some pairs, notably the Australian Dollar and New Zealand Dollar pairs, that, at certain times of the day are very slow moving, and may sometimes go as much as 30 seconds or more between ticks, which means that no processing takes place during that time.  Realizing that there are now some time-sensitive operations being performed (i.e., canceling pending orders at the 2 minute mark), I didn't want to risk being frozen out.  So the tick processing is now called once a second whether there has been any change in the price data or not.  Also, in response to a request from a user, I have added configuration variables to control the color and size of the label boxes at the end of the Range Lines.
 # RELEASE NOTES for v 0.34.2 8/22/2018
 
 This is a very minor release with a fix for a minor issue that I discovered in v 0.34 (and v 0.34.1), and a minor enhancement suggested by user Tim Black (@IsItCoffeeYet) that allows control of the size of screen shot captures.
 
-The design for the "Draw Range Lines" feature was to have the line drawn extend to the end of the New York session, i.e., approximately 5:00 PM Eastern Time. At the time I implemented it, I was using a server that was set to New York time, and the implementation worked as expected. I recently switched to a server that was set to GMT, and discovered that my range lines were ending at around noon local time, and, occassionally, disappearing almost completely.  Since determining what time zone the server time is running is tricky, I implemented a work around in v 0.34.2 that makes sure that the line is drawn at least 5 hours past the current candle (assuming 15 minute time frames.)
+The design for the "Draw Range Lines" feature was to have the line drawn extend to the end of the New York session, i.e., approximately 5:00 PM Eastern Time. At the time I implemented it, I was using a server that was set to New York time, and the implementation worked as expected. I recently switched to a server that was set to GMT, and discovered that my range lines were ending at around noon local time, and, occassionally, disappearing almost completely.  Since determining what time zone the server time is running is tricky, I implemented a work around in v 0.34.2 that makes sure that the line is drawn at least 5 hours past the current candle. 
 
 In the earlier implementations of the ScreenCaptureFiles feature, the chart height and width as displayed on the terminal was used for the capture file.  Tim Black pointed out that you can specify the pixel width and height of the area to be captured at run time independent of the area displayed on the terminal. Version 0.34.2 adds two new integer Configuration variables, "ScreenShotHeight" and "ScreenShotWidth". If those variables are 0, then the actual chart height and width will be used.  If they have a value, then the height and width of the captured file will be set to those values. This allows capturing wide screen images even if you're not using that much screen real estate in your display.
 
@@ -79,6 +108,10 @@ In addition, on detecting that a trade has been closed, it will
 
 All these actions are configurable.
 
+Beginning in Release v.34, it adds a feature that, on command (by clicking a button), it will find the high and low for the current day, and draw range lines on the chart, and, optionally, set pending orders at those levels.  Beginning with Release 0.41, it will cancel those pending orders with two minutes to go in the candle, and then re-set them at the start of the next candle. It can also auto-close or alert if the candle closes inside the range.
+
+Beginning in Release v.34, it can automatically save a screen capture file of the chart when the trade is executed. Beginning with Release 0.41, it can sort those screen shots into directories, either by date or by the pair name, and can purge screen shot files older than a configurable number of days in order to keep from taking up too much disk space.
+
 
 # Installation:
 
@@ -143,7 +176,7 @@ There are numerous configuration variable for the Trading Assistant in order to 
 
 <dt>SetLimitsOnPendingOrders</dt> <dd> Added in version 0.33, this boolean variable determines whether or not the trading assistant will modify a pending order by adding stop loss and take profit limits to the order.  If false, the order is left unmodified.  Default is true. </dd>
 
-<dt>AdjustStopOnTriggeredPendingOrders</dt> <dd>Added in version 0.33. When a pending order is entered, stop loss and take profit points are calculated based on the trigger price of the pending order.  When the order is actually triggered, the entry price may be different, sometimes substantially different, than the trigger price due to slippage.  If this variable is true, the trading assistant will modify the order and send new stop loss and take profit points based on the actual entry price. Default is true.
+<dt>AdjustStopOnTriggeredPendingOrders</dt> <dd>Added in version 0.33. When a pending order is entered, stop loss and take profit points are calculated based on the trigger price of the pending order.  When the order is actually triggered, the entry price may be different, sometimes substantially different, than the trigger price due to slippage.  If this variable is true, the trading assistant will modify the order and send new stop loss and take profit points based on the actual entry price. Default is true.</dd>
 
 
 ### Configure Trade Display
@@ -188,6 +221,12 @@ There are numerous configuration variable for the Trading Assistant in order to 
 
 <dt>MarginForPendingRangeOrders</dt><dd>If SetPendingOrdersOnRanges is true, this variable determines the number of pips outside the calculated ranges that the pending orders will be placed. This allows you to wait for the price to actually come through the limit, rather than just touching it, before triggering your order.  The value can be set to 0.0 to trigger the order if the limit is touched, and, technically, could be set to a negative number to trigger the order before the limit is reached.  The default value is 1.0.</dd>
 
+<dt>ObserveTwoMinuteRule</dt><dd> [Added in Release 0.41] If SetPendingOrdersOnRanges is true, any existing pending orders set by the drawing range lines will be cancelled with two minutes left in the candle, and then re-set at the start fo the next candle.  If a pending order is manually deleted before the two minute point, that order will not be re-set. At the two minute mark, the "Draw Range Lines" button will be changed to a "Cancel Range Lines", with a yellow background.  If that button is clicked, the range lines will be removed, and the pending orders that were cancelled will not be re-set. The default value for this variable is True.</dd>
+
+<dt>AutoCloseOnCBIR</dt><dd> [Added in Release 0.41] For any trades that resulted from pending orders set by drawing range lines, the Trading Assistant will check at the start of each candle, and, if the bid price has fallen back inside the range, the order will be automatically closed. If the price closes "on the line" (i.e., equal to the range limit), an alert will be issued and the trade will NOT be closed. The default value for this variable is True.</dd>
+
+<dt>AlertOnCBIR</dt><dd> [Added in Release 0.41] For any trades that resulted from pending order set by drawing range lines, the Trading Assistant will check at the start of each candle, and, if the bid price has fallen back inside the range, it will issue an alert. The default value for this variable is False.</dd>
+
 <dt>AccountForSpreadOnPendingBuyOrders</dt><dd>If SetPendingOrdersOnRanges is true, this variable determines whether you add the spread to the calculated Buy Stop trigger price at the top of the range. If set false, it would cause the order to be triggered if the Ask price touches the limit (plus the designated margin described above). However, the calculated range is based on the Bid price, so this would result in your order be triggered before the bid price actually reached the limit. Note: the spread is taken into account at the time the pending order is set.  The pending order price is not adjusted for changes in the spread after the order is set. The default value is true.</dd>
 
 <dt>PendingLotSize</dt><dd>If SetPendingOrdersOnRanges is true, this variable determines the number of lots that the pending order will be set for. If the value is 0.0, it will attempt to find the number of lots used on the last order for this pair, and use that.  The default value is 0.0.</dd>
@@ -196,12 +235,21 @@ There are numerous configuration variable for the Trading Assistant in order to 
 
 ### Timing Related Configuration
 <dt>BeginningOfDayOffsetHours<dt>
-<dd>This variable will offset the beginning of the day from your broker's clock.  This offset is used in calculating the High of the day and Low of the day (HOD/LOD) when drawing range lines = 0 </dd>
+<dd>This variable will offset the beginning of the day from your broker's clock.  This offset is used in calculating the High of the day and Low of the day (HOD/LOD) when drawing range lines.  Default value = 0 </dd>
 
 <dt>EndOfDayOffsetHours</dt> <dd>Added in version 0.33, this variable alters the time at which the trading assistant will "clean up" the various graphic elements it may have added to the chart (arrows, boxes, trendlines, etc.)  It also adjusts the right edge of the "No Entry Zone" rectangle if that is in use.</dd>
+
+### Screen Shot Capture Configuration
+<dt>CaptureScreenShotsInFiles</dt><dd> [Added in Release 0.34] If set to True, the Trading Assistant will capture a screen shot file in the Files directory of the local MQL4 file tree.  The file name will have the date and time (to the minute, using your local computer clock), followed by the pair name, and either 'L' or 'S', depending on whether it's a long or short trade, and then the sequence number of trades of that type in that pair today.  The captured file will be a ".png" (Portable Network Graphics) file.</dd>
+
+<dt>ScreenShotWidth</dt><dd> [Added in Release 0.34.2] Specifies the width in pixels of the screen shot file to be captured.  If the value is 0, the screen capture will use the width of the chart in the terminal window at the time the trade is executed.  Default value is 0.</dd>
+
+<dt>ScreenShotHeight</dt><dd> [Added in Release 0.34.2] Specifies the height in pixels of the screen shot file to be captured.  If the value is 0, the screen capture will use the height of the chart in the terminal window at the time the trade is executed.  Default value is 0.</dd>
+
+<dt>DaysToKeepScreenShots</dt><dd> [Added in Release 0.41] If set to a non-zero value, this will cause the Trading Assistant scan through all the screen capture files for the current pair in the directory Files\ScreenShots, and delete any files that are older than that many days. This scan takes place during the end-of-day processing, so the MetaTrader4 platform and the Trading Assistant must be left running through the end of the day in order for this clean up to take place. Default value is 0.</dd>
+
+<dt>SortScreenShotsBy</dt><dd> [Added in Release 0.41] The valid values for this string variable are "None", "Date", and either "Pair" or "Symbol", which are both equivalent.  Value is not case sensitive.  If the value is None, all screen capture files will be captured in the directory Files\ScreenShots, with no sorting.  If the value is Date, a hierarchical date folder structure will be set up within the Files\ScreenShots folder, with a year folder, a month folder (consisting of a 2-digit month number and a 3-character English month abbreviation), and a day folder for each day of the month the Trading Assistant is active.  All screen shots for that day will be saved in the appropriate folder. If value is either Pair or Symbol, a folder for each pair name will be set up in Files\ScreenShots, and all screen shots for the given pair will be saved in those folders.  The default value is None</dd>
 </dl>
-
-
 # Limitations
 
 In my use, PATI Trading Assistant (PTA) has worked exactly as expected 99% of the time. However, there are a couple limitations that you need to understand to avoid some surprises.
