@@ -166,8 +166,9 @@ There are numerous configuration variable for the Trading Assistant in order to 
 
 <dt>SaveConfiguration</dt> <dd>I have often found, when using an EA, that there are a few values that I consistently want to set different from the default values.  Unless I have access to the source code (and want to go to the trouble of rebuilding the EA), I have no choice but to enter those values every time I start the EA. Setting this variable to true will copy out each of the configuration variables to a file in the Terminal's Files area.  On subsequent startups, this configuration file will be read and those values used in place of whatever is set in the settings dialog. If you want to start without using the configuration file after you have saved it, simply go into the Files area (by using the File -> Open Data Folder menu item, then navigating down the MQL\Files.  The file is named "PTA_&lt;symbol>_Configuration.txt".  You can delete that file (in which case you will have to save the configuration again if you want to use it), or rename it to something else (in which case you can rename it back the next time you want to use it). Since the file is an editable text file, you can also edit and change the values in the file itself.</dd>
 
+</dl>
 ### Configure Stop Loss Levels
-
+<dl>
 <dt>DefaultStopPips</dt> <dd> For any pair not listed in the Exceptions variable (see below) this variable gives the number of pips away from the entry that the stop loss will be set. Default value is 12.</dd>
 
 <dt>Exceptions</dt>  <dd>This is a string variable that lists any pairs that have a different stop loss from the Default.  The format is a list of one or more pair names separated by commas, then followed by a forward slash ('/') and the number of pips that becomes the stop loss for that pair or pairs.  This can then be followed by a semicolon and another list and value.  The default value is  "EURUSD/8;AUDUSD,GBPUSD,EURJPY,USDJPY,USDCAD/10", which will set an 8 pip stop for the EURUSD, a 10 pip stop for the AUDUSD, GBPUSD, EURJPY, USDJPY, and USDCAD.  All other pairs will use he value of DefaultStopPips (12).  This is in keeping with the current PATI rules at the time of the first implementation of the PATI Trading Assistant. If you choose to trade other pairs, or the set of pairs traded by PATI is modified after the trading assistant is released, you may want to modify this value.</dd>
@@ -178,8 +179,9 @@ There are numerous configuration variable for the Trading Assistant in order to 
 
 <dt>AdjustStopOnTriggeredPendingOrders</dt> <dd>Added in version 0.33. When a pending order is entered, stop loss and take profit points are calculated based on the trigger price of the pending order.  When the order is actually triggered, the entry price may be different, sometimes substantially different, than the trigger price due to slippage.  If this variable is true, the trading assistant will modify the order and send new stop loss and take profit points based on the actual entry price. Default is true.</dd>
 
-
+</dl>
 ### Configure Trade Display
+<dl>
 
 <dt>ShowEntry</dt> <dd>this is a boolean variable that determines whether or not to show an arrow indicator at the entry point to a trade.  The arrow will be blue. (See also EntryIndicator.) The default value is true.</dd>
 
@@ -197,7 +199,9 @@ There are numerous configuration variable for the Trading Assistant in order to 
 
 <dt>TradeTrendLineColor</dt> <dd>This is a color variable that sets the color that the TradeTrendLine will be drawn in. The default is Blue.  If ShowTradeTrendLine is false, this value has no effect.</dd>
 
+</dl>
 ### Configure No-Entry Zone
+<dl>
 
 <dt>ShowNoEntryZone</dt> <dd>this is a boolean variable that determines whether or not to display the "NoEntry" rectangle following an exit that loses pips.  The NoExitZone will be a rectangle extending from the current time to the end of the day, and from the "next level" above and below the trade entry. (See also MinNoEntryPad and NoEntryZoneColor.) Default value is true.</dd>
 
@@ -205,17 +209,25 @@ There are numerous configuration variable for the Trading Assistant in order to 
 
 <dt>MinNoEntryPad</dt> <dd>This a double value that represents the minimum distance in pips that the entry price has to be away from the "next level" when establishing the "NoEntryZone".  If the entry price is closer than that to a level, the "next level" chosen for the NoEntry rectangle will be one level beyond that. As an example, if you have a losing trade in the EURUSD with an entry price of 1.0612, which is 8 pips from the next level up of 1.0620, and the MinNoEntryPad is set at the default of 15, then the top of the NoEntry rectangle will not be at 1.0620, but at the next level, 1.0650.  Default value is 15 pips. If ShowNoEntryZone is false, this value has no effect.</dd>
 
+</dl>
 ### Configure Take Profit Levels
+<dl>
 
 <dt>UseNextLevelTPRule</dt> <dd>this is a boolean (true/false) variable that determines whether or not to set a Take Profit (TP) that implements the "Exit at the next level" PATI objective take profit setting. (See also MinRewardRatio.) Default value is true.</dd>
 
 <dt>MinRewardRatio</dt> <dd>When setting the "Next Level" take profit price, it makes no sense to set it so close to the entry that there is not sufficient reward-to-risk ratio.  For example, if you have entered a long trade on the EURUSD at 1.0618, technically, the next level would be 1.0620.  But that would only result in a 2 pip profit, compared to a 8 pip risk.  That is hardly the recipe for a profitable strategy.  This variable takes the stop loss pips that is used for the pair, multiplies that by this factor, and sets that as the minimum take profit target. If the "next level" is less than this value, it sets the TP target one more level up.  Thus, in our example, since EURUSD uses an 8 pip stop (by default), using the default MinRewardRatio, we would be looking for minimum TP target of 12 pips, 1.0630.  The next level above this is 1.0650, which is where the TP would be set. The default value is 1.5. If UseNextLevelTPRule is false, this value has no effect.</dd>
 
+</dl>
 ### Configure Draw Range Lines feature
+<dl>
 
 <dt>ShowDrawRangeButton</dt> <dd>If true, the button controlling the Draw Range Lines feature is drawn in the lower left corner of the chart. If false, the button is not drawn, and the feature is inaccessible. Default value is true.</dd>
 
 <dt>RangeLinesColor</dt><dd>This color variable sets the color that will be used to draw the high and low range lines. Default value is Yellow.</dd>
+
+<dt>RangeLineLabelColor></dt><dd> [Added in Release 0.41.1] Specifies the color of the Right Price Arrow (label) that is drawn at the right end of the range lines. Default is Blue.</dd>
+
+<dt>RangeLineLabelSize</dt><dd> [Added in Release 0.41.1] Specifies the size of the Right Price Arrow (label) that is drawn at the right end of the range lines. This should be a small positive integer.  Default value is 1. </dd>
 
 <dt>SetPendingOrdersOnRanges</dt><dd> If true, pending orders will be placed at or just outside (see MarginForPendingRangeOrders below) the calculated ranges immediately after the ranges are drawn. At the same time, it will cancel any existing Buy Stop or Sell Stop orders because the newly placed range orders will replace them. In this way, it is safe to simply click the "Draw Range Lines" button again to re-calculate range limits and re-place the corresponding orders without having to first cancel the existing orders. The default value is false.</dd>
 
@@ -233,13 +245,17 @@ There are numerous configuration variable for the Trading Assistant in order to 
 
 <dt>CancelPendingTrades</dt><dd>If this variable is true, when a pending order is triggered, it will automatically cancel all other pending trades in the same direction, to prevent the possibility of their being triggered and resulting in double execution. This actually applies to all trades, not just those entered as a result of drawing range lines. The default value is true.</dd>
 
+</dl>
 ### Timing Related Configuration
+<dl>
 <dt>BeginningOfDayOffsetHours<dt>
 <dd>This variable will offset the beginning of the day from your broker's clock.  This offset is used in calculating the High of the day and Low of the day (HOD/LOD) when drawing range lines.  Default value = 0 </dd>
 
 <dt>EndOfDayOffsetHours</dt> <dd>Added in version 0.33, this variable alters the time at which the trading assistant will "clean up" the various graphic elements it may have added to the chart (arrows, boxes, trendlines, etc.)  It also adjusts the right edge of the "No Entry Zone" rectangle if that is in use.</dd>
 
+</dl>
 ### Screen Shot Capture Configuration
+<dl>
 <dt>CaptureScreenShotsInFiles</dt><dd> [Added in Release 0.34] If set to True, the Trading Assistant will capture a screen shot file in the Files directory of the local MQL4 file tree.  The file name will have the date and time (to the minute, using your local computer clock), followed by the pair name, and either 'L' or 'S', depending on whether it's a long or short trade, and then the sequence number of trades of that type in that pair today.  The captured file will be a ".png" (Portable Network Graphics) file.</dd>
 
 <dt>ScreenShotWidth</dt><dd> [Added in Release 0.34.2] Specifies the width in pixels of the screen shot file to be captured.  If the value is 0, the screen capture will use the width of the chart in the terminal window at the time the trade is executed.  Default value is 0.</dd>
