@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.41.1beta"
+#property version   "0.49.0alpha"
 #property strict
 
 #include <stdlib.mqh>
@@ -15,13 +15,15 @@
 #include <Position.mqh>
 #include <Broker.mqh>
 #include "PTA_Runtests.mqh"
+#include <mt4gui2.mqh>
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.41.1beta";
+string Version="v0.49.0alpha";
 string NTIPrefix = "NTI_";
 int DFVersion = 2;
 
+int hwnd = 0;
 
 string TextFont="Verdana";
 int FiveDig;
@@ -44,6 +46,17 @@ int rngButtonYOffset = 50;
 int rngButtonHeight = 18;
 int rngButtonWidth = 150;
 string rngButtonName = Prefix + "DrawRangeBtn";
+// gui object handles
+int ylButton = 0;
+int longRadioBtn = 0;
+int shortRadioBtn = 0;
+int setPendingChkBox = 0;
+
+int ylBtnXOffset = 10;
+int ylBtnYOffset = 98;
+int ylBtnHeight = 18;
+int ylBtnWidth = 150;
+int twoMinuteMark;
 
 //Configuration variables
 extern string General = "===General===";
@@ -84,6 +97,8 @@ extern double MarginForPendingRangeOrders = 1.0;
 extern bool ObserveTwoMinuteRule = true;
 extern bool AutoCloseOnCBIR = true;
 extern bool AlertOnCBIR = false;
+extern string ConfigureYellowLines = "===Configure Draw Yellow Lines feature ===";
+extern bool ShowDrawYLButton = true;
 extern bool AccountForSpreadOnPendingBuyOrders = true;
 extern double PendingLotSize = 0.0;
 extern bool CancelPendingTrades = true;
@@ -139,6 +154,7 @@ color _rangeLinesColor;
 color _rangeLineLabelColor;
 int _rangeLineLabelSize;
 bool _cancelPendingTrades;
+bool _showDrawYLButton;
 bool _makeTickVisible;
 bool _captureScreenShotsInFiles;
 int _screenShotWidth;
@@ -223,6 +239,9 @@ int OnInit()
    else
       FiveDig = 1;
    AdjPoint = Point * FiveDig;
+   twoMinuteMark = PeriodSeconds() - 120;  // Period of the chart in seconds minus 2 minutes in seconds
+   hwnd = WindowHandle(Symbol(), Period());
+   guiRemoveAll(hwnd);
    DrawVersion(); 
    UpdateGV();
    CopyInitialConfigVariables();
@@ -253,6 +272,11 @@ void OnDeinit(const int reason)
    //----
    if (reason != REASON_CHARTCHANGE && reason!= REASON_PARAMETERS && reason != REASON_RECOMPILE)
       DeleteAllObjects();
+   if (hwnd > 0) 
+   {
+      guiRemoveAll(hwnd);
+      guiCleanup(hwnd);
+   }
    for(int ix=totalActiveTrades - 1;ix >=0;ix--)
      {
       if (CheckPointer(activeTradesLastTick[ix]) == POINTER_DYNAMIC) delete activeTradesLastTick[ix];
@@ -518,7 +542,10 @@ void Initialize()
   {
    DrawRangeButton();
   }
- 
+  if(_showDrawYLButton)
+    {
+     DrawYLButton();
+    }
  //For testing - remove when done
  DeleteOldScreenShots(); 
 
@@ -600,6 +627,7 @@ void CopyInitialConfigVariables()
    _rangeLineLabelColor = RangeLineLabelColor;
    _rangeLineLabelSize = RangeLineLabelSize;
    _cancelPendingTrades = CancelPendingTrades;
+   _showDrawYLButton = ShowDrawYLButton;
    _makeTickVisible = MakeTickVisible;
    _captureScreenShotsInFiles = CaptureScreenShotsInFiles;
    _screenShotWidth = ScreenShotWidth;
@@ -770,6 +798,10 @@ void ApplyConfiguration(string fileName)
                {
                   _pendingLotSize =  StringToDouble(value); 
                }
+        else if (var == "ShowDrawYLButton")
+               {
+                  _showDrawYLButton = (bool) StringToInteger(value);
+               }
         else if (var == "MarginForPendingRangeOrders")
                {
                   _marginForPendingRangeOrders =  StringToDouble(value);
@@ -866,6 +898,7 @@ void SaveConfigurationFile()
    FileWriteString(fileHandle, "RangeLineLabelColor: " + (string) _rangeLineLabelColor + "\r\n");
    FileWriteString(fileHandle, "RangeLineLabelSize: " + IntegerToString( _rangeLineLabelSize) + "\r\n");
    FileWriteString(fileHandle, "CancelPendingTrades: " + IntegerToString((int) _cancelPendingTrades) + "\r\n");
+   FileWriteString(fileHandle, "ShowDrawYLButton: " + IntegerToString((int) _showDrawYLButton) + "\r\n");
    FileWriteString(fileHandle, "CaptureScreenShotsInFiles: " + IntegerToString((int) _captureScreenShotsInFiles) + "\r\n");
    FileWriteString(fileHandle, "ScreenShotWidth: " + IntegerToString(_screenShotWidth) + "\r\n");
    FileWriteString(fileHandle, "ScreenShotHeight: " + IntegerToString(_screenShotHeight) + "\r\n");
@@ -914,6 +947,7 @@ void PrintConfigValues()
    Print("RangeLineLabelColor: " + (string) _rangeLineLabelColor + "\r\n");
    Print("RangeLineLabelSize: " + IntegerToString( _rangeLineLabelSize) + "\r\n");
    Print("CancelPendingTrades: " + IntegerToString((int) _cancelPendingTrades) + "\r\n");
+   Print("ShowDrawYLButton: " + IntegerToString((int) _showDrawYLButton) + "\r\n");
    Print("CaptureScreenShotsInFiles: " + IntegerToString((int) _captureScreenShotsInFiles) + "\r\n"); 
    Print("DaysToKeepScreenShots: " + IntegerToString(_daysToKeepScreenShots) + "\r\n"); 
    Print("SortScreenShotsBy: " + _sortScreenShotsBy + "\r\n"); 
@@ -955,6 +989,27 @@ void PrintConfigValues()
   
    }
  
+   void DrawYLButton()
+   {
+      if (ylButton > 0) guiRemove(hwnd, ylButton);
+      // Since we're drawing relative to LOWER LEFT corner and gui coordinates are relative to UPPER LEFT corner, we have to transform them.
+      int screenHeight = ChartHeightInPixelsGet();
+      int buttonYpos = screenHeight - ylBtnYOffset; 
+      ylButton = guiAdd(hwnd,"button", ylBtnXOffset, buttonYpos, ylBtnWidth, ylBtnHeight, "Draw YL");
+      if(longRadioBtn > 0) guiRemove(hwnd, longRadioBtn);
+      if(shortRadioBtn > 0) guiRemove(hwnd, shortRadioBtn);
+      
+      guiGroupRadio(hwnd);
+      longRadioBtn = guiAdd(hwnd, "radio", ylBtnXOffset+ ylBtnWidth+10, buttonYpos,75, ylBtnHeight, "Long");
+      shortRadioBtn = guiAdd(hwnd, "radio", ylBtnXOffset + ylBtnWidth + ylBtnHeight + 85, buttonYpos, 75, ylBtnHeight, "Short");
+      setPendingChkBox = guiAdd(hwnd, "checkbox", ylBtnXOffset + ylBtnWidth/2, buttonYpos + 25, 100, 20, "Set Pending Orders"); 
+      if(_setPendingOrdersOnRanges)
+        {
+         guiSetChecked(hwnd, setPendingChkBox, true);
+        }
+      
+      
+   }
    void CheckForClosedTrades()
    {
       if(totalActiveTrades > 0 || totalDeletedTrades > 0)
@@ -2401,7 +2456,8 @@ bool ChartForegroundSet(const bool value,const long chart_ID=0)
  void CheckTwoMinuteRule()
  {
   datetime curTime = TimeCurrent();
-  if (((TimeCurrent() - Time[0]) > 13*60) && !caughtTwoMinThisBar)  //Assuming 15-minute bar - so we're in the last 2 min
+  int periodMinutes = Period();
+  if (((TimeCurrent() - Time[0]) > twoMinuteMark) && !caughtTwoMinThisBar)  //Assuming 15-minute bar - so we're in the last 2 min
    {
        caughtTwoMinThisBar = true;
        if (!_showDrawRangeButton) // then the button isn't there to manipulate, and neither is anything else
