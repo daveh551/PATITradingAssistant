@@ -1,3 +1,11 @@
+# RELEASE NOTES for v 0.41.1 10/25/2018
+
+Fixed a rare but troublesome bug that had been occurring for some time. It turns out that the MT4 infrastructure would very occasionally return an error when selecting an order to get its current status, and the error was not being checked for.  This resulted in invalid status being returned, and ultimately resulted in attempts to manipulate an order with a zero trade ID, which is invalid.
+
+## WARNING when using Range Lines:
+
+Do NOT change the period of the chart (e.g. from M15 to M5, or to M30) if you have an active order that resulted from a range breakout.  The change in the candle size is seen by the program as the start of a new candle, and triggers the logic to check for "close back inside range" conditions, and may result in the order being erroneously closed.
+
 # RELEASE NOTES for v 0.41.1 8/28/2018
 
 This release adds some new features and makes some very significant improvements to existing features.

@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.41.1beta"
+#property version   "0.41.2"
 #property strict
 
 #include <stdlib.mqh>
@@ -18,7 +18,7 @@
 
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.41.1beta";
+string Version="v0.41.2";
 string NTIPrefix = "NTI_";
 int DFVersion = 2;
 
@@ -97,6 +97,7 @@ extern int ScreenShotHeight = 0;
 extern int DaysToKeepScreenShots = 0;
 extern string SortScreenShotsDescription = "Valid values for the next variable are None, Date, Pair or Symbol";
 extern string SortScreenShotsBy = "None";
+extern bool ToggleVersionForHeartBeat;
 
 
 const double  GVUNINIT= -99999999;
@@ -145,6 +146,7 @@ int _screenShotWidth;
 int _screenShotHeight;
 int _daysToKeepScreenShots;
 string _sortScreenShotsBy;
+bool _toggleVersionForHeartBeat;
 
 
 
@@ -162,6 +164,8 @@ string configFileName;
 string globalConfigFileName;
 string screenShotDirectory;
 string screenShotRootDirectory;
+int oldScreenShotsExamined;
+int oldScreenShotsDeleted;
 datetime lastUpdateTime;
 int lastTradeId = 0;
 bool lastTradePending = false;
@@ -321,6 +325,22 @@ void OnTimer()
   {
       // count 1 second ticks up to 10 minutes, then call HeartBeat();
       static int tenMinuteTickCount = 0;
+      static bool showVersion = true;
+      if(_toggleVersionForHeartBeat)
+        {
+         if (showVersion)
+         {
+            showVersion = false;
+            DeleteVersion();
+            
+         }
+         else
+           {
+            showVersion = true;
+            DrawVersion();
+           }
+         
+        }
       if(++tenMinuteTickCount > 600)
         {
             HeartBeat();
@@ -404,6 +424,12 @@ void DrawVersion()
    ObjectSet(name,OBJPROP_YDISTANCE,2);
    } //void DrawVersion()
 
+void DeleteVersion()
+{
+   string name;
+   name = StringConcatenate(Prefix, "Version");
+   if (ObjectFind(0, name) >= 0) ObjectDelete(0, name);
+}
 
 void DrawTickNumber()
 {
@@ -518,10 +544,7 @@ void Initialize()
   {
    DrawRangeButton();
   }
- 
- //For testing - remove when done
- DeleteOldScreenShots(); 
-
+  
 }
 
 datetime DateFromTime(datetime time)
@@ -606,6 +629,7 @@ void CopyInitialConfigVariables()
    _screenShotHeight = ScreenShotHeight;
    _daysToKeepScreenShots = DaysToKeepScreenShots;
    _sortScreenShotsBy =  SortScreenShotsBy; StringToLower(_sortScreenShotsBy);
+   _toggleVersionForHeartBeat = ToggleVersionForHeartBeat;
 
 }
 
@@ -626,10 +650,7 @@ void ApplyConfiguration()
 void ApplyConfiguration(string fileName)
 {
    if (!FileIsExist(fileName)) return;
-   if(DEBUG_CONFIG)
-     {
-      PrintFormat("Attempting to open config file %s for pair %s", fileName, Symbol());
-     }
+
    int fileHandle = FileOpen(fileName, FILE_ANSI | FILE_TXT | FILE_READ);
    if (fileHandle == -1) 
    {
@@ -637,10 +658,7 @@ void ApplyConfiguration(string fileName)
       PrintFormat("Failed to open configFile %s. Error = %i", fileName, errcode);
       return;
    }
-   if(DEBUG_CONFIG)
-     {
-      PrintFormat("Successfully opened configFile %s for pair %s", fileName, Symbol());
-     }
+  
    while(!FileIsEnding(fileHandle))
      {
       string line = FileReadString(fileHandle);
@@ -817,10 +835,7 @@ void ApplyConfiguration(string fileName)
               
       }
    FileClose(fileHandle);
-   if(DEBUG_CONFIG)
-     {
-      PrintFormat("Closed configFile %s for pair %s", fileName, Symbol());
-     }
+
 }
 
 void SaveConfigurationFile()
@@ -1016,8 +1031,11 @@ void PrintConfigValues()
       int seqNo = 1;
       int copyThisTick[];
       Position * copyLastTick[];
+      int lastTickArraySize = totalActiveTradeIdsThisTick;
+      if(totalActiveTrades > lastTickArraySize) lastTickArraySize = totalActiveTrades;
+      
       ArrayCopy(copyThisTick,activeTradeIdsThisTick);
-      ArrayResize(copyLastTick,totalActiveTradeIdsThisTick);
+      ArrayResize(copyLastTick,lastTickArraySize);
       for(int ix=0;ix<totalActiveTrades;ix++)
         {
          if(CheckPointer(activeTradesLastTick[ix]) == POINTER_DYNAMIC)
@@ -1040,8 +1058,12 @@ void PrintConfigValues()
                      if (activeTradesLastTick[ix].IsPending)
                      {
                         int orderType = broker.GetType(tradeId);
-                        if (orderType == OP_BUY || orderType == OP_SELL) //then no longer pending.
+			               broker.GetClose(activeTradesLastTick[ix]);
+                        if ((orderType == OP_BUY || orderType == OP_SELL) && activeTradesLastTick[ix].OrderClosed == 0)
+				 //then no longer pending.
                         {
+                           PrintFormat("Found trade no longer pending. ID=%i, tradeId = %i, orderType = %i, OrderClosed = %s", activeTradesLastTick[ix].TicketId, tradeId,
+                              orderType, TimeToStr(activeTradesLastTick[ix].OrderClosed));
                            if (CheckPointer(activeTradesLastTick[ix]) == POINTER_DYNAMIC) delete activeTradesLastTick[ix];
                            activeTradesLastTick[ix] = broker.GetTrade(tradeId);
                            activeTrade = activeTradesLastTick[ix];
@@ -1061,7 +1083,12 @@ void PrintConfigValues()
                                  PrintFormat("ThisTick[%i] TradeID = %i", dx, copyThisTick[dx]);
                                 }
                              }
-                           HandlePendingTradeGoneActive();
+                            
+                           if(activeTrade.TicketId > 0) HandlePendingTradeGoneActive(); //don't do it if we have 0 or negative trade id
+                           else {
+                              Alert("Get Trade errod handling pending trade gone active.");
+                           }
+                         
                         }
                      }
                      break;
@@ -1173,6 +1200,7 @@ void HandleTradeEntry(bool wasPending, bool savedTrade = false)
    {
       PrintFormat("Entered HandleTradeEntry(wasPending = %i, savedTrade=%i", (int) wasPending, (int) savedTrade);
    }
+   if (!savedTrade) SetStopAndProfitLevels(activeTrade, wasPending);
       if(!savedTrade &&  !activeTrade.IsPending)
         {
          if (_alertOnTrade)
@@ -1194,7 +1222,6 @@ void HandleTradeEntry(bool wasPending, bool savedTrade = false)
         }
      }
    string objectName = Prefix + "Entry";
-   if (!savedTrade) SetStopAndProfitLevels(activeTrade, wasPending);
    if (activeTrade.OrderType == OP_BUY)
    {
       objectName = objectName + "L" + IntegerToString(++longTradeNumberForDay);
@@ -1205,8 +1232,6 @@ void HandleTradeEntry(bool wasPending, bool savedTrade = false)
    }
    if (_showEntry)
    {
-   PrintFormat("Drawing Entry arrow. Opened @ %s %f. Stop at %f", 
-      TimeToString(activeTrade.OrderOpened, TIME_MINUTES), activeTrade.OpenPrice, activeTrade.StopPrice);
    ObjectCreate(0, objectName, OBJ_ARROW, 0, activeTrade.OrderOpened, activeTrade.OpenPrice);
    ObjectSetInteger(0, objectName, OBJPROP_ARROWCODE, _entryIndicator);
    ObjectSetInteger(0, objectName, OBJPROP_COLOR, Blue);
@@ -1373,7 +1398,7 @@ void HandleClosedTrade(bool savedTrade = false)
                      if (existingLow < rectLow)
                      {
                         if (DEBUG_EXIT)
-                           PrintFormat("Existing log (%s) substituted for new Low(%S)", DoubleToStr(existingLow,Digits), DoubleToStr(rectLow, Digits));
+                           PrintFormat("Existing low (%s) substituted for new Low(%S)", DoubleToStr(existingLow,Digits), DoubleToStr(rectLow, Digits));
                         rectLow = existingLow;
                      }
                      datetime existingStart = ObjectGetInteger(0, rectName, OBJPROP_TIME1);
@@ -1506,6 +1531,7 @@ bool CreateDirectory(string directoryName)
 {
    if(FileIsExist(directoryName))return true;
    if(FolderCreate(directoryName)) return true;
+   if(FileIsExist(directoryName)) return true; //Check if another process created it in a race condition
    Alert("FolderCreate for " + directoryName + " failed. Error= "+IntegerToString(GetLastError()));
    return false;
 }
@@ -1589,8 +1615,16 @@ bool CheckSaveFileValid()
 }
 void CleanupEndOfDay()
 {
+   Print("Entering CleanupEndOfDay()");
    DeleteSaveFile();
    DeleteAllObjects();
+   for(int ix=0;ix<RANGELO;ix++)
+     {
+         ranges[ix].pendngRangeOrderId = 0;
+         ranges[ix].rangeLimit = 0.0;
+         ranges[ix].rangeTime = 0;
+         ranges[ix].resetRange = false;
+     }
    // Replace the version legend
    DrawVersion();
    // Replace the Draw Range Button (if it's shown)
@@ -1603,7 +1637,11 @@ void CleanupEndOfDay()
 
 void DeleteOldScreenShots()
 {
+   oldScreenShotsDeleted = 0;
+   oldScreenShotsExamined = 0;
+   Print("Calling DeleteOldScreenShots()");
    DeleteOldScreenShots(screenShotRootDirectory + "\\");
+   PrintFormat("Examined %i old screen shots; deleted %i of them", oldScreenShotsExamined, oldScreenShotsDeleted);
 }
 
 void DeleteOldScreenShots(string directoryName)
@@ -1636,7 +1674,6 @@ void DeleteOldScreenShots(string directoryName)
          string fullFilePath = int_dir  + file_name;
          FileIsExist(fullFilePath);
          bool fileIsDirectory = (GetLastError() == ERR_FILE_IS_DIRECTORY);
-         PrintFormat("%d: %s name = %s",i, fileIsDirectory ? "Directory" : "File", file_name);
          i++;
          
          if(fileIsDirectory)
@@ -1647,9 +1684,11 @@ void DeleteOldScreenShots(string directoryName)
          else
            {
             if(!IsScreenShot(fullFilePath)) continue;
+            oldScreenShotsExamined++;
             int fileAge = GetFileAge(fullFilePath);
             if( fileAge > _daysToKeepScreenShots)
               {
+               oldScreenShotsDeleted++;
                //Log it
                PrintFormat("Deleting file %s %i days old", fullFilePath, fileAge);
                FileDelete(fullFilePath);
@@ -1784,7 +1823,7 @@ void ReadOldTrades(string fileName)
                if(stopLossPos != -1)
                {
                   line = StringSubstr(line, stopLossPos);
-                  StringReplace(line, "Intial Stop: ", "");
+                  StringReplace(line, "Initial Stop: ", "");
                   sl = StrToDouble(line);
                }
                lastTradeId = tradeId;

@@ -9,6 +9,7 @@
 #property strict
 #include <Position.mqh>
 #include <OrderReliable_2011.01.07.mqh>
+const int MAXSELECTRETRIES = 3;
 
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -19,8 +20,10 @@ private:
    int startingPos;
    string symbolPrefix;
    string symbolSuffix;
+   Position * NullTrade;
 public:
                      Broker(int symbolOffset = 0);
+                     
                     ~Broker();
                     string TypeName;
                     virtual int GetNumberOfOrders()
@@ -29,16 +32,31 @@ public:
                     }
                     virtual Position*  GetTrade(int TicketID)
                     {
-                     SelectOrderByTicket(TicketID);
-                     return (GetPosition());
+                     if (SelectOrderByTicket(TicketID)) return (GetPosition());
+                     else return new Position(NullTrade);
                     }
                     virtual void SelectOrderByPosition(int position)
                     {
                         OrderSelect(position, SELECT_BY_POS);
                     }
-                    virtual void SelectOrderByTicket(int ticketId)
+                    virtual bool SelectOrderByTicket(int ticketId)
                     {
-                     OrderSelect(ticketId, SELECT_BY_TICKET);                        
+                      //return OrderSelect(ticketId, SELECT_BY_TICKET);  
+                        int retryCnt;
+
+                     for(retryCnt=0;retryCnt<MAXSELECTRETRIES;retryCnt++)
+                       {
+                           if(OrderSelect(ticketId, SELECT_BY_TICKET))
+                              break;
+                           PrintFormat("Attempt #%i to select order %i failed. Error code = %i", retryCnt, ticketId, GetLastError());
+                           Sleep(100*(retryCnt+1));  //let's give it a little breather before hitting it again.
+                       }
+                     if (retryCnt >= MAXSELECTRETRIES)
+                     {
+                        Alert("Attempt to select order " + IntegerToString(ticketId) + " failed after " + IntegerToString(MAXSELECTRETRIES));
+                        return false;
+                     }
+                     return true;
                     }
                     virtual Position * GetPosition()
                     {
@@ -59,14 +77,21 @@ public:
                     }
                     virtual int GetType(int ticketId)
                     {
-                     SelectOrderByTicket(ticketId);
-                     return OrderType();
+                     if (SelectOrderByTicket(ticketId)) return OrderType();
+                     else return -1;
                     }
                     virtual void GetClose(Position * trade)
                     {
-                     SelectOrderByTicket(trade.TicketId);
-                     trade.ClosePrice = OrderClosePrice();
-                     trade.OrderClosed = OrderCloseTime();
+                     if (SelectOrderByTicket(trade.TicketId))
+                     {
+                        trade.ClosePrice = OrderClosePrice();
+                        trade.OrderClosed = OrderCloseTime();
+                     }
+                     else
+                     {
+                        trade.ClosePrice = 0.0;
+                        trade.OrderClosed = 0;
+                     }
                     }
                     virtual void SetSLandTP(Position *trade)
                     {
@@ -156,12 +181,25 @@ Broker::Broker(int symbolOffset = 0)
    else
       symbolPrefix = StringSubstr(symbol, 0, symbolOffset);
    symbolSuffix = StringSubstr(symbol,6+symbolOffset);
+   NullTrade = new Position();
+                        NullTrade.TicketId = -1;
+                        NullTrade.OrderType = 999;
+                        NullTrade.IsPending = false;
+                        NullTrade.Symbol = NormalizeSymbol(Symbol());
+                        NullTrade.OrderOpened = 0;
+                        NullTrade.OpenPrice = 0.0;
+                        NullTrade.ClosePrice = 0.0;
+                        NullTrade.OrderClosed = 0;
+                        NullTrade.StopPrice = 0.0;
+                        NullTrade.TakeProfitPrice = 0.0;
+                        NullTrade.LotSize = 0.0;     
   }
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
 Broker::~Broker()
   {
+   delete NullTrade;
   }
 //+------------------------------------------------------------------+
 

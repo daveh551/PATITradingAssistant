@@ -47,16 +47,17 @@ public:
                     {
                         selectedPosition = pos;
                     }
-                    virtual void SelectOrderByTicket(int ticketId)
+                    virtual bool SelectOrderByTicket(int ticketId)
                     {
                      for(int ix=0;ix<ArraySize(OrderIndex);ix++)
                        {
                         if(OrdersToReturn[OrderIndex[ix]].TicketId == ticketId)
                         {
                            selectedPosition = ix;
-                           return;
+                           return true;
                         }
                        }
+                       return false;
                     }
                     
                     virtual int GetType(int ticketId)
