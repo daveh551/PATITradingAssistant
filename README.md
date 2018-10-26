@@ -1,4 +1,4 @@
-# RELEASE NOTES for v 0.41.1 10/25/2018
+# RELEASE NOTES for v 0.41.2 10/25/2018
 
 Fixed a rare but troublesome bug that had been occurring for some time. It turns out that the MT4 infrastructure would very occasionally return an error when selecting an order to get its current status, and the error was not being checked for.  This resulted in invalid status being returned, and ultimately resulted in attempts to manipulate an order with a zero trade ID, which is invalid.
 
