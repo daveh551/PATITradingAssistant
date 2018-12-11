@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Dave Hanna"
 #property link      "http://nohypeforexrobotreview.com"
-#property version   "0.49.0alpha"
+#property version   "0.49.0beta2"
 #property strict
 
 #include <stdlib.mqh>
@@ -17,9 +17,14 @@
 #include "PTA_Runtests.mqh"
 #include <mt4gui2.mqh>
 
+/* BUG/TODO LIST
+ * Remove ylTrade when trade goes active or is deleted - check
+ * Redraw autoChkBox on chart resize
+ * Test for CO candle
+ */
 string Title="PATI Trading Assistant"; 
 string Prefix="PTA_";
-string Version="v0.49.0alpha";
+string Version="v0.49.0beta2";
 string NTIPrefix = "NTI_";
 int DFVersion = 2;
 
@@ -42,7 +47,7 @@ int debug = true;
 #define DEBUG_RANGELINES ((debug & 0x0100) == 0x0100)
 bool HeartBeat = true;
 int rngButtonXOffset = 10;
-int rngButtonYOffset = 50;
+int rngButtonYOffset = 32;
 int rngButtonHeight = 18;
 int rngButtonWidth = 150;
 string rngButtonName = Prefix + "DrawRangeBtn";
@@ -51,11 +56,29 @@ int ylButton = 0;
 int longRadioBtn = 0;
 int shortRadioBtn = 0;
 int setPendingChkBox = 0;
+int autoTrackChkBox = 0;
+datetime autoTrackTime = 0;
+double autoTrackPrice = 0;
 
+int currentChartHeightInPixels = 0;
+int currentChartWidthInPixels = 0;
+double currentChartMin = 0.0;
+double currentChartMax = 0.0;
+
+string ylButtonName = Prefix +"DrawYLBtn";
 int ylBtnXOffset = 10;
-int ylBtnYOffset = 98;
+int ylBtnYOffset = 76;
 int ylBtnHeight = 18;
 int ylBtnWidth = 150;
+
+int setPendingChkBoxWidth = 150;
+int setPendingChkBoxHeight = 18;
+string ylLineName = Prefix+"YLTrendLine";
+string ylArrowName = Prefix+"YLPrice";
+
+int chkBoxHeight = 18;
+int autoTrackChkBoxWidth = 90;
+
 int twoMinuteMark;
 
 //Configuration variables
@@ -99,6 +122,7 @@ extern bool AutoCloseOnCBIR = true;
 extern bool AlertOnCBIR = false;
 extern string ConfigureYellowLines = "===Configure Draw Yellow Lines feature ===";
 extern bool ShowDrawYLButton = true;
+extern bool UseAutoTrack = true;
 extern bool AccountForSpreadOnPendingBuyOrders = true;
 extern double PendingLotSize = 0.0;
 extern bool CancelPendingTrades = true;
@@ -112,6 +136,7 @@ extern int ScreenShotHeight = 0;
 extern int DaysToKeepScreenShots = 0;
 extern string SortScreenShotsDescription = "Valid values for the next variable are None, Date, Pair or Symbol";
 extern string SortScreenShotsBy = "None";
+extern bool ToggleVersionForHeartBeat;
 
 
 const double  GVUNINIT= -99999999;
@@ -161,6 +186,9 @@ int _screenShotWidth;
 int _screenShotHeight;
 int _daysToKeepScreenShots;
 string _sortScreenShotsBy;
+bool _toggleVersionForHeartBeat;
+int _ylNumberOfCandles = 5;
+bool _useAutoTrack;
 
 
 
@@ -178,6 +206,8 @@ string configFileName;
 string globalConfigFileName;
 string screenShotDirectory;
 string screenShotRootDirectory;
+int oldScreenShotsExamined;
+int oldScreenShotsDeleted;
 datetime lastUpdateTime;
 int lastTradeId = 0;
 bool lastTradePending = false;
@@ -224,6 +254,8 @@ const int RANGEHI = 0;
 const int RANGELO = 1;
 
 Range ranges[2] = { {0.0, 0, 0, false}, {0.0, 0, 0, false}};
+
+int ylTrade = 0;
 
 bool caughtTwoMinThisBar = false;
 
@@ -334,9 +366,7 @@ void OnTick()
    
    CheckForNewTrades();
    if (_observeTwoMinuteRule) CheckTwoMinuteRule();
-  
-   
-   
+
   }
 //+------------------------------------------------------------------+
 //| Timer function                                                   |
@@ -345,6 +375,22 @@ void OnTimer()
   {
       // count 1 second ticks up to 10 minutes, then call HeartBeat();
       static int tenMinuteTickCount = 0;
+      static bool showVersion = true;
+      if(_toggleVersionForHeartBeat)
+        {
+         if (showVersion)
+         {
+            showVersion = false;
+            DeleteVersion();
+            
+         }
+         else
+           {
+            showVersion = true;
+            DrawVersion();
+           }
+         
+        }
       if(++tenMinuteTickCount > 600)
         {
             HeartBeat();
@@ -373,6 +419,22 @@ void OnChartEvent(const int id, const long& lParam, const double& dParam, const 
            {
             CancelRangeLines();
            }
+      }
+      else if (sParam == ylButtonName)
+      {
+         PlotYL();
+      }
+   }
+   else if (id == CHARTEVENT_CHART_CHANGE)
+   {
+      int chartHeight = ChartHeightInPixelsGet();
+      int chartWidth = ChartWidthInPixelsGet();
+      double chartMax = ChartMaxGet();
+      double chartMin = ChartMinGet();
+      if(chartHeight != currentChartHeightInPixels || chartWidth != currentChartWidthInPixels ||  //chart was resized
+         chartMax != currentChartMax || chartMin != currentChartMin) // chart scale was changed
+      {
+         RedrawGUIObjects();
       }
    }
 }
@@ -428,6 +490,12 @@ void DrawVersion()
    ObjectSet(name,OBJPROP_YDISTANCE,2);
    } //void DrawVersion()
 
+void DeleteVersion()
+{
+   string name;
+   name = StringConcatenate(Prefix, "Version");
+   if (ObjectFind(0, name) >= 0) ObjectDelete(0, name);
+}
 
 void DrawTickNumber()
 {
@@ -546,9 +614,7 @@ void Initialize()
     {
      DrawYLButton();
     }
- //For testing - remove when done
- DeleteOldScreenShots(); 
-
+   RedrawGUIObjects();
 }
 
 datetime DateFromTime(datetime time)
@@ -634,6 +700,8 @@ void CopyInitialConfigVariables()
    _screenShotHeight = ScreenShotHeight;
    _daysToKeepScreenShots = DaysToKeepScreenShots;
    _sortScreenShotsBy =  SortScreenShotsBy; StringToLower(_sortScreenShotsBy);
+   _toggleVersionForHeartBeat = ToggleVersionForHeartBeat;
+   _useAutoTrack = UseAutoTrack;
 
 }
 
@@ -654,10 +722,7 @@ void ApplyConfiguration()
 void ApplyConfiguration(string fileName)
 {
    if (!FileIsExist(fileName)) return;
-   if(DEBUG_CONFIG)
-     {
-      PrintFormat("Attempting to open config file %s for pair %s", fileName, Symbol());
-     }
+
    int fileHandle = FileOpen(fileName, FILE_ANSI | FILE_TXT | FILE_READ);
    if (fileHandle == -1) 
    {
@@ -665,10 +730,7 @@ void ApplyConfiguration(string fileName)
       PrintFormat("Failed to open configFile %s. Error = %i", fileName, errcode);
       return;
    }
-   if(DEBUG_CONFIG)
-     {
-      PrintFormat("Successfully opened configFile %s for pair %s", fileName, Symbol());
-     }
+  
    while(!FileIsEnding(fileHandle))
      {
       string line = FileReadString(fileHandle);
@@ -843,16 +905,16 @@ void ApplyConfiguration(string fileName)
                   StringToLower(value);
                   _sortScreenShotsBy = value;
                }
-
-               
+        else if (var == "UseAutoTrack")
+               {
+                  _useAutoTrack = (bool) StringToInteger(value);
+               }
+         
         }
               
       }
    FileClose(fileHandle);
-   if(DEBUG_CONFIG)
-     {
-      PrintFormat("Closed configFile %s for pair %s", fileName, Symbol());
-     }
+
 }
 
 void SaveConfigurationFile()
@@ -904,6 +966,7 @@ void SaveConfigurationFile()
    FileWriteString(fileHandle, "ScreenShotHeight: " + IntegerToString(_screenShotHeight) + "\r\n");
    FileWriteString(fileHandle, "DaysToKeepScreenShots: " + IntegerToString(_daysToKeepScreenShots) + "\r\n");
    FileWriteString(fileHandle, "SortScreenShotsBy: " + _sortScreenShotsBy + "\r\n");
+   FileWriteString(fileHandle, "UseAutoTrack: " + IntegerToString((int) _useAutoTrack) + "\r\n");
 
 
    
@@ -951,6 +1014,7 @@ void PrintConfigValues()
    Print("CaptureScreenShotsInFiles: " + IntegerToString((int) _captureScreenShotsInFiles) + "\r\n"); 
    Print("DaysToKeepScreenShots: " + IntegerToString(_daysToKeepScreenShots) + "\r\n"); 
    Print("SortScreenShotsBy: " + _sortScreenShotsBy + "\r\n"); 
+   Print("UseAutoTrack: " + IntegerToString((int) _useAutoTrack) + "\r\n");
   
 }
 
@@ -991,25 +1055,115 @@ void PrintConfigValues()
  
    void DrawYLButton()
    {
-      if (ylButton > 0) guiRemove(hwnd, ylButton);
-      // Since we're drawing relative to LOWER LEFT corner and gui coordinates are relative to UPPER LEFT corner, we have to transform them.
-      int screenHeight = ChartHeightInPixelsGet();
-      int buttonYpos = screenHeight - ylBtnYOffset; 
-      ylButton = guiAdd(hwnd,"button", ylBtnXOffset, buttonYpos, ylBtnWidth, ylBtnHeight, "Draw YL");
-      if(longRadioBtn > 0) guiRemove(hwnd, longRadioBtn);
-      if(shortRadioBtn > 0) guiRemove(hwnd, shortRadioBtn);
-      
-      guiGroupRadio(hwnd);
-      longRadioBtn = guiAdd(hwnd, "radio", ylBtnXOffset+ ylBtnWidth+10, buttonYpos,75, ylBtnHeight, "Long");
-      shortRadioBtn = guiAdd(hwnd, "radio", ylBtnXOffset + ylBtnWidth + ylBtnHeight + 85, buttonYpos, 75, ylBtnHeight, "Short");
-      setPendingChkBox = guiAdd(hwnd, "checkbox", ylBtnXOffset + ylBtnWidth/2, buttonYpos + 25, 100, 20, "Set Pending Orders"); 
-      if(_setPendingOrdersOnRanges)
+      if(ObjectFind(0, ylButtonName )>= 0)
         {
-         guiSetChecked(hwnd, setPendingChkBox, true);
+       
+         ResetLastError();
+         bool success = ObjectDelete( ylButtonName);
+         if(!success)
+           {
+               Print("Failed to delete YL Button (" + ylButtonName +").  Error = " + GetLastError());
+           }
         }
-      
+      ButtonCreate(
+         0, //chart_ID
+         ylButtonName, //name
+         0, //sub_window
+         ylBtnXOffset,
+         ylBtnYOffset,
+         ylBtnWidth,
+         ylBtnHeight,
+         CORNER_LEFT_LOWER,
+         "Draw YL",
+         "Ariel", //fond
+         10, // font_size
+         clrBlack, //text color
+         clrLightGray, //background color
+         clrNONE, // border color
+         false, //pressed/released state
+         false, //selection ??
+         false // hidden
+         
+      );
       
    }
+   
+   void RedrawGUIObjects()
+   {
+      currentChartHeightInPixels = ChartHeightInPixelsGet();
+      currentChartWidthInPixels = ChartWidthInPixelsGet();
+      currentChartMin = ChartMinGet();
+      currentChartMax = ChartMaxGet();
+      if(_showDrawRangeButton || _showDrawYLButton)
+         DrawSetPendingCheckBox();
+      if(_showDrawYLButton)
+         DrawYLRadioButtons();
+      RedrawAutoTrackChkBox();
+      RedrawReEntryChkBoxes();
+   }
+   
+   void RedrawAutoTrackChkBox()
+   {
+      if (autoTrackChkBox == 0) return;
+      int chkBoxX, chkBoxY;
+      bool autoTrackStartState = guiIsChecked(hwnd, autoTrackChkBox);
+      ChartTimePriceToXY(0, 0, autoTrackTime, autoTrackPrice, chkBoxX, chkBoxY);
+      guiRemove(hwnd, autoTrackChkBox);
+      autoTrackChkBox = guiAdd(hwnd, "checkbox", chkBoxX, chkBoxY - 9,  autoTrackChkBoxWidth, chkBoxHeight, "Auto Track");
+      guiSetBgColor(hwnd, autoTrackChkBox, Gray);
+      guiSetTextColor(hwnd,autoTrackChkBox, Black);
+      guiSetChecked(hwnd, autoTrackChkBox, autoTrackStartState);
+   }
+   
+   void RedrawReEntryChkBoxes()
+   {
+      //Place holder for when we add checkboxes to no-entry zone
+   }
+   void DrawSetPendingCheckBox()
+   {
+      if(setPendingChkBox != 0)
+      {
+              _setPendingOrdersOnRanges = guiIsChecked(hwnd,setPendingChkBox);
+              guiRemove(hwnd, setPendingChkBox);
+      }
+      setPendingChkBox = guiAdd(hwnd, "checkbox", 
+         ylBtnXOffset+ylBtnWidth + 2, currentChartHeightInPixels - (rngButtonYOffset + rngButtonHeight), 
+        
+         setPendingChkBoxWidth, setPendingChkBoxHeight, 
+         "Set Pending Orders");
+      guiSetBgColor(hwnd, setPendingChkBox, Gray);
+      guiSetTextColor(hwnd, setPendingChkBox, Black);guiSetChecked(hwnd, setPendingChkBox, _setPendingOrdersOnRanges);
+      
+   }
+   
+   void DrawYLRadioButtons()
+   {
+      bool longBtnChecked = false;
+      bool shortBtnChecked = false;
+      if(longRadioBtn != 0)
+      {
+         longBtnChecked = guiIsChecked(hwnd, longRadioBtn);
+         guiRemove(hwnd, longRadioBtn);
+      }
+      if(shortRadioBtn != 0)
+      {
+         shortBtnChecked = guiIsChecked(hwnd,shortRadioBtn);
+         guiRemove(hwnd, shortRadioBtn);
+      }
+      guiGroupRadio(hwnd);
+         longRadioBtn = guiAdd(hwnd, "radio", ylBtnXOffset+ylBtnWidth+2, currentChartHeightInPixels-(ylBtnYOffset + ylBtnHeight/2),
+            ylBtnWidth/2, ylBtnHeight, "Long");
+         guiSetChecked(hwnd, longRadioBtn, longBtnChecked);
+         guiSetBgColor(hwnd,longRadioBtn,Gray);
+         guiSetTextColor(hwnd, longRadioBtn, Black);
+         shortRadioBtn = guiAdd(hwnd, "radio", ylBtnXOffset + ylBtnWidth+2, currentChartHeightInPixels-(ylBtnYOffset - ylBtnHeight/2),
+            ylBtnWidth/2, ylBtnHeight, "Short");
+         guiSetChecked(hwnd, shortRadioBtn, shortBtnChecked);
+         guiSetBgColor(hwnd, shortRadioBtn, Gray);
+         guiSetTextColor(hwnd, shortRadioBtn, Black);
+      
+   }
+   
    void CheckForClosedTrades()
    {
       if(totalActiveTrades > 0 || totalDeletedTrades > 0)
@@ -1071,8 +1225,11 @@ void PrintConfigValues()
       int seqNo = 1;
       int copyThisTick[];
       Position * copyLastTick[];
+      int lastTickArraySize = totalActiveTradeIdsThisTick;
+      if(totalActiveTrades > lastTickArraySize) lastTickArraySize = totalActiveTrades;
+      
       ArrayCopy(copyThisTick,activeTradeIdsThisTick);
-      ArrayResize(copyLastTick,totalActiveTradeIdsThisTick);
+      ArrayResize(copyLastTick,lastTickArraySize);
       for(int ix=0;ix<totalActiveTrades;ix++)
         {
          if(CheckPointer(activeTradesLastTick[ix]) == POINTER_DYNAMIC)
@@ -1095,8 +1252,12 @@ void PrintConfigValues()
                      if (activeTradesLastTick[ix].IsPending)
                      {
                         int orderType = broker.GetType(tradeId);
-                        if (orderType == OP_BUY || orderType == OP_SELL) //then no longer pending.
+			               broker.GetClose(activeTradesLastTick[ix]);
+                        if ((orderType == OP_BUY || orderType == OP_SELL) && activeTradesLastTick[ix].OrderClosed == 0)
+				 //then no longer pending.
                         {
+                           PrintFormat("Found trade no longer pending. ID=%i, tradeId = %i, orderType = %i, OrderClosed = %s", activeTradesLastTick[ix].TicketId, tradeId,
+                              orderType, TimeToStr(activeTradesLastTick[ix].OrderClosed));
                            if (CheckPointer(activeTradesLastTick[ix]) == POINTER_DYNAMIC) delete activeTradesLastTick[ix];
                            activeTradesLastTick[ix] = broker.GetTrade(tradeId);
                            activeTrade = activeTradesLastTick[ix];
@@ -1116,7 +1277,12 @@ void PrintConfigValues()
                                  PrintFormat("ThisTick[%i] TradeID = %i", dx, copyThisTick[dx]);
                                 }
                              }
-                           HandlePendingTradeGoneActive();
+                            
+                           if(activeTrade.TicketId > 0) HandlePendingTradeGoneActive(); //don't do it if we have 0 or negative trade id
+                           else {
+                              Alert("Get Trade error handling pending trade gone active.");
+                           }
+                         
                         }
                      }
                      break;
@@ -1228,6 +1394,9 @@ void HandleTradeEntry(bool wasPending, bool savedTrade = false)
    {
       PrintFormat("Entered HandleTradeEntry(wasPending = %i, savedTrade=%i", (int) wasPending, (int) savedTrade);
    }
+   if (activeTrade.TicketId == ylTrade)
+      HandleYLEntry();
+   if (!savedTrade) SetStopAndProfitLevels(activeTrade, wasPending);
       if(!savedTrade &&  !activeTrade.IsPending)
         {
          if (_alertOnTrade)
@@ -1249,7 +1418,6 @@ void HandleTradeEntry(bool wasPending, bool savedTrade = false)
         }
      }
    string objectName = Prefix + "Entry";
-   if (!savedTrade) SetStopAndProfitLevels(activeTrade, wasPending);
    if (activeTrade.OrderType == OP_BUY)
    {
       objectName = objectName + "L" + IntegerToString(++longTradeNumberForDay);
@@ -1260,8 +1428,6 @@ void HandleTradeEntry(bool wasPending, bool savedTrade = false)
    }
    if (_showEntry)
    {
-   PrintFormat("Drawing Entry arrow. Opened @ %s %f. Stop at %f", 
-      TimeToString(activeTrade.OrderOpened, TIME_MINUTES), activeTrade.OpenPrice, activeTrade.StopPrice);
    ObjectCreate(0, objectName, OBJ_ARROW, 0, activeTrade.OrderOpened, activeTrade.OpenPrice);
    ObjectSetInteger(0, objectName, OBJPROP_ARROWCODE, _entryIndicator);
    ObjectSetInteger(0, objectName, OBJPROP_COLOR, Blue);
@@ -1279,6 +1445,15 @@ void HandleTradeEntry(bool wasPending, bool savedTrade = false)
    }
    if(!savedTrade) CaptureScreenShot();
 
+}
+
+void HandleYLEntry()
+{
+   //Called when a pending YL trade goes active
+   if (autoTrackChkBox != 0) 
+      guiRemove(hwnd, autoTrackChkBox);
+   autoTrackChkBox = 0;
+   ylTrade = 0;
 }
 
 void SetStopAndProfitLevels(Position * trade, bool wasPending)
@@ -1428,7 +1603,7 @@ void HandleClosedTrade(bool savedTrade = false)
                      if (existingLow < rectLow)
                      {
                         if (DEBUG_EXIT)
-                           PrintFormat("Existing log (%s) substituted for new Low(%S)", DoubleToStr(existingLow,Digits), DoubleToStr(rectLow, Digits));
+                           PrintFormat("Existing low (%s) substituted for new Low(%S)", DoubleToStr(existingLow,Digits), DoubleToStr(rectLow, Digits));
                         rectLow = existingLow;
                      }
                      datetime existingStart = ObjectGetInteger(0, rectName, OBJPROP_TIME1);
@@ -1458,6 +1633,7 @@ void HandleDeletedTrade()
            }
            else
            { 
+            if (deletedTrades[ix].TicketId == ylTrade) ylTrade == 0;
             if(deletedTrades[ix].TicketId == activeTrade.TicketId)
             {
                RemoveDeletedTrade(ix);
@@ -1561,6 +1737,7 @@ bool CreateDirectory(string directoryName)
 {
    if(FileIsExist(directoryName))return true;
    if(FolderCreate(directoryName)) return true;
+   if(FileIsExist(directoryName)) return true; //Check if another process created it in a race condition
    Alert("FolderCreate for " + directoryName + " failed. Error= "+IntegerToString(GetLastError()));
    return false;
 }
@@ -1644,12 +1821,21 @@ bool CheckSaveFileValid()
 }
 void CleanupEndOfDay()
 {
+   Print("Entering CleanupEndOfDay()");
    DeleteSaveFile();
    DeleteAllObjects();
+   for(int ix=0;ix<RANGELO;ix++)
+     {
+         ranges[ix].pendngRangeOrderId = 0;
+         ranges[ix].rangeLimit = 0.0;
+         ranges[ix].rangeTime = 0;
+         ranges[ix].resetRange = false;
+     }
    // Replace the version legend
    DrawVersion();
    // Replace the Draw Range Button (if it's shown)
    if (_showDrawRangeButton) DrawRangeButton();
+   if (_showDrawYLButton) DrawYLButton();
    if(_daysToKeepScreenShots != 0)
      {
       DeleteOldScreenShots();
@@ -1658,7 +1844,11 @@ void CleanupEndOfDay()
 
 void DeleteOldScreenShots()
 {
+   oldScreenShotsDeleted = 0;
+   oldScreenShotsExamined = 0;
+   Print("Calling DeleteOldScreenShots()");
    DeleteOldScreenShots(screenShotRootDirectory + "\\");
+   PrintFormat("Examined %i old screen shots; deleted %i of them", oldScreenShotsExamined, oldScreenShotsDeleted);
 }
 
 void DeleteOldScreenShots(string directoryName)
@@ -1691,7 +1881,6 @@ void DeleteOldScreenShots(string directoryName)
          string fullFilePath = int_dir  + file_name;
          FileIsExist(fullFilePath);
          bool fileIsDirectory = (GetLastError() == ERR_FILE_IS_DIRECTORY);
-         PrintFormat("%d: %s name = %s",i, fileIsDirectory ? "Directory" : "File", file_name);
          i++;
          
          if(fileIsDirectory)
@@ -1702,9 +1891,11 @@ void DeleteOldScreenShots(string directoryName)
          else
            {
             if(!IsScreenShot(fullFilePath)) continue;
+            oldScreenShotsExamined++;
             int fileAge = GetFileAge(fullFilePath);
             if( fileAge > _daysToKeepScreenShots)
               {
+               oldScreenShotsDeleted++;
                //Log it
                PrintFormat("Deleting file %s %i days old", fullFilePath, fileAge);
                FileDelete(fullFilePath);
@@ -1839,7 +2030,7 @@ void ReadOldTrades(string fileName)
                if(stopLossPos != -1)
                {
                   line = StringSubstr(line, stopLossPos);
-                  StringReplace(line, "Intial Stop: ", "");
+                  StringReplace(line, "Initial Stop: ", "");
                   sl = StrToDouble(line);
                }
                lastTradeId = tradeId;
@@ -1878,9 +2069,94 @@ datetime GetDate(datetime time)
    return (StructToTime(timeStruct));
 }
 
+void PlotYL()
+{
+   int opDirection;
+   _setPendingOrdersOnRanges = guiIsChecked(hwnd, setPendingChkBox);
+   datetime ylLineStartTime = Time[1];
+   datetime ylLineEndTime = ylLineStartTime + _ylNumberOfCandles * 15*60;
+   if (longRadioBtn == 0 && shortRadioBtn == 0) return;  // can't plot line if neither long or short buttons exist
+   if (!guiIsChecked(hwnd, longRadioBtn) && !guiIsChecked(hwnd, shortRadioBtn)) return; // can't plot if neither is checked
+   opDirection = guiIsChecked(hwnd, longRadioBtn)? OP_BUYLIMIT : OP_SELLLIMIT;
+   double ylPrice = guiIsChecked(hwnd,longRadioBtn)? Low[1] : High[1];
+   if (ObjectFind(0, ylLineName) >= 0) 
+   {
+      ObjectDelete(0, ylLineName);
+      ObjectDelete(0, ylArrowName);
+   }
+   ObjectCreate(0, ylLineName, OBJ_TREND, 0, ylLineStartTime, ylPrice, ylLineEndTime, ylPrice);
+   ObjectSetInteger(0, ylLineName, OBJPROP_COLOR, Yellow);
+   ObjectSetInteger(0, ylLineName, OBJPROP_WIDTH, 2);
+   ObjectSetInteger(0, ylLineName, OBJPROP_RAY, false);
+   ObjectCreate(0, ylArrowName, OBJ_ARROW_RIGHT_PRICE, 0, ylLineEndTime + 15*60, ylPrice);
+   ObjectSetInteger(0, ylArrowName, OBJPROP_COLOR, Blue);
+   ObjectSetInteger(0, ylArrowName, OBJPROP_WIDTH, 2);
+   
+   //TODO: Check if current price is more than 27 pips away from pending order price.  If so, don't set pending order.
+   ylTrade = CreatePendingOrder(ylPrice, opDirection, _setPendingOrdersOnRanges, _accountForSpreadOnPendingBuyOrders, 0.0, SymbolInfoInteger(Symbol(), SYMBOL_SPREAD));
+   if (_useAutoTrack)
+      ShowAutoTrackChkBox(ylLineEndTime, ylPrice);
+   
+   
+}
 
+void ShowAutoTrackChkBox(datetime time, double price)
+{
+   int chkBoxX;
+   int chkBoxY;
+   ChartTimePriceToXY(0, 0, time + 330 * 60, price, chkBoxX, chkBoxY);
+  
+   if (autoTrackChkBox != 0) guiRemove(hwnd, autoTrackChkBox);
+   autoTrackChkBox = guiAdd(hwnd, "checkbox", chkBoxX, chkBoxY - 9, autoTrackChkBoxWidth, chkBoxHeight, "Auto Track");
+   autoTrackPrice = price;
+   autoTrackTime = time + 330 * 60;
+   guiSetBgColor(hwnd, autoTrackChkBox, Gray); guiSetTextColor(hwnd, autoTrackChkBox, Black);
+}
+
+void TrackYL()
+{
+   CancelYL();
+   PlotYL();
+   if (autoTrackChkBox != 0) guiSetChecked(hwnd, autoTrackChkBox, true);
+}
+void CancelYL()
+{
+
+   if (ylTrade == 0) // There's no trade, but there may be a YL without pending
+   {
+      DeleteYLObjects();
+      return;
+   }
+   Position * trade = broker.GetTrade(ylTrade);
+   if (trade.OrderClosed != 0)
+   {
+      DeleteYLObjects();
+      ylTrade = 0;
+   }
+   if (!trade.IsPending)
+   {
+      ylTrade = 0;
+   }
+   else 
+   {
+      broker.DeletePendingTrade(trade);
+      DeleteYLObjects();
+   }
+   delete trade;
+}
+
+void DeleteYLObjects()
+   {
+      if (ObjectFind(0, ylLineName) >= 0) ObjectDelete(0, ylLineName);
+      if (ObjectFind(0, ylArrowName) >= 0) ObjectDelete(0, ylArrowName);
+      if (autoTrackChkBox != 0) guiRemove(hwnd, autoTrackChkBox);
+      autoTrackChkBox = 0;
+   
+   }
+   
 void PlotRangeLines(bool buttonPress = false)
 {
+   _setPendingOrdersOnRanges = guiIsChecked(hwnd, setPendingChkBox);
    datetime eod = beginningOfDay + 19*60*60;
    if (eod < (Time[0] + 5*60*60)) eod = Time[0] + 5*60*60;  //Make it at least 5 hours past current candle
    ObjectSetInteger(0, rngButtonName, OBJPROP_STATE, true);
@@ -2241,7 +2517,7 @@ bool CheckForMatchingPendingTrades(Position * newTrade, Position * deletedTrade)
    return false;
 }
 
-void CreatePendingOrdersForRange( double triggerPrice, int operation, bool setPendingOrders, bool allowForSpread, double margin, int spread)
+int CreatePendingOrder( double triggerPrice, int operation, bool setPendingOrders, bool allowForSpread, double margin, int spread)
 {
    // Delete any existing pending order of same operation type
    for(int ix=0;ix<totalActiveTrades;ix++)
@@ -2260,8 +2536,8 @@ void CreatePendingOrdersForRange( double triggerPrice, int operation, bool setPe
       string setPendingOrdersString = setPendingOrders? "TRUE" : "FALSE";
       Print ("About to set pending order. setPendingOrders = " +setPendingOrdersString);
      }
-   if (!setPendingOrders) return;
-   if (operation == OP_SELLSTOP)
+   if (!setPendingOrders) return 0;
+   if (operation == OP_SELLSTOP |operation == OP_SELLLIMIT )
       price = triggerPrice  - (margin * Point * FiveDig);
    else
    {
@@ -2293,11 +2569,19 @@ void CreatePendingOrdersForRange( double triggerPrice, int operation, bool setPe
       Print("About to place pending order: Symbol=" +trade.Symbol + " Price = " + DoubleToStr(trade.OpenPrice));
      }
    broker.CreateOrder(trade);
+   int ticket =trade.TicketId;
+   delete(trade);    
+   return ticket;
+}
+
+void CreatePendingOrdersForRange(double triggerPrice, int operation, bool setPendingOrders, bool allowForSpread, double margin, int spread)
+{
+   int ticket = CreatePendingOrder(triggerPrice, operation, setPendingOrders, allowForSpread, margin, spread);
    int rangeIndex = RANGELO;
    if (operation == OP_BUYSTOP) rangeIndex = RANGEHI;
-   ranges[rangeIndex].pendngRangeOrderId = trade.TicketId;
+   ranges[rangeIndex].pendngRangeOrderId = ticket;
  
-   delete(trade); 
+
    
 }
 //+------------------------------------------------------------------+
@@ -2405,6 +2689,29 @@ int ChartHeightInPixelsGet(const long chart_ID=0,const int sub_window=0)
    return((int)result);
   } 
   
+double ChartMinGet()
+{
+   double result = 0.0;
+   ResetLastError();
+   if (!ChartGetDouble(0,CHART_PRICE_MIN, 0, result))
+   {
+      Print(__FUNCTION__+", Error Code = ", GetLastError());
+   }
+   return result;
+   
+}
+double ChartMaxGet()
+{
+   double result = 0.0;
+   ResetLastError();
+   if (!ChartGetDouble(0,CHART_PRICE_MAX, 0, result))
+   {
+      Print(__FUNCTION__+", Error Code = ", GetLastError());
+   }
+   return result;
+   
+}
+
 //+---------------------------------------------------------------------------+
 //| The function enables/disables the mode of displaying a price chart on the |
 //| foreground.                                                               |
@@ -2591,4 +2898,8 @@ bool ChartForegroundSet(const bool value,const long chart_ID=0)
             }
             PlotRangeLines();
          }
+         if (autoTrackChkBox !=0 && guiIsChecked(hwnd, autoTrackChkBox))
+            TrackYL();
+         else
+            CancelYL();
       }

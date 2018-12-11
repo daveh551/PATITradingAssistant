@@ -1,3 +1,35 @@
+# RELEASE NOTES for v 0.49.0 12/11/2018
+
+## IMPORTANT! BREAKING CHANGE
+
+This release adds a new feature, the ability to draw graphical indicators for yellow line (pullback) trade, and set the appropriate pending order for it.  In order to do that, we have added some on-screen graphical user interface controls.  This has necessitated the use of a 3rd party library external to the MetaTrader4.  In order to use this, when installing the EA onto your charts, you MUST check the "Allow DLL Imports" box, either in the "Common" tab of the EA properties when installing it, or in the "Expert Advisors" tab of the Tools -> Options menu (if selected there, it applies to the entire platform and only needs to be done once.
+
+UNLESS THE "Allow DLL Import" PROPERTY IS SET, THE EA WILL SILENTLY FAIL (i.e., without any warning or error messages) ON STARTUP.
+
+## New features and changes
+
+1. Draw YL button - There is a new action button in the lower left corner of the chart labeled "Draw YL".  This button is similar to the "Draw Range Lines" button in that, when it is clicked, it will draw some graphical elements on the chart, and, optionally, set a pending order corresponding to those elements.  In this case, the graphical element is a short yellow horizontal line at either the top or bottom of the preceding candle, corresponding to the entry criteria for a "yellow line" trade in the PATI methodology.  The "Long" and "Short" radio buttons control whether the yellow line is placed at bottom (for an entry long) or top (for an entry short) of the previous candle.  If neither radio button is checked, nothing will happen. 
+
+Adjacent to the yellow line is a checkbox labeled "Auto Track".  If you check this box, then,  if the entry trade is not hit on the current candle, then the yellow line and, if selected, its corresponding pending order, will be moved at the start of the next candle to track the price movement.
+
+2. In this and prior versions, there is a configuration variable, "SetPendingOrdersOnRanges" that controlled whether or not pending orders were set corresponding to the range lines that were drawn.  In the course of using the PTA, I realized that setting pending orders is something that is decided in the moment according to changing market conditions, and you shouldn't have to change a configuration variable (and restart the EA) in order to change it. In version 0.49 and later, there is a checkbox between the "Draw Range Lines" and the "Draw YL" buttons labeled "Set Pending Orders". The initial state (checked or unchecked) of this box is taken from the SetPendingOrdersOnRanges configuration variable, but its state can be changed at any time by clicking on the box.  It is shown between the "Draw Range Lines" and "Draw YL" buttons to indicate that it applies to both.  If the box is checked at the time the button is clicked, then the pending order(s) corresponding to the graphical elements will be set.
+
+## New configuration variables
+
+ShowDrawYLButton - if false, the Draw YL button and it's corresponding controls will not be drawn, and, thus, not Draw YL action can be taken. Default value is true.
+
+UseAutoTrack - if false, the Auto Track checkbox is not drawn adjacent to the yellow line, and, thus, no auto tracking will take place.
+
+
+
+# RELEASE NOTES for v 0.41.2 10/25/2018
+
+Fixed a rare but troublesome bug that had been occurring for some time. It turns out that the MT4 infrastructure would very occasionally return an error when selecting an order to get its current status, and the error was not being checked for.  This resulted in invalid status being returned, and ultimately resulted in attempts to manipulate an order with a zero trade ID, which is invalid.
+
+## WARNING when using Range Lines:
+
+Do NOT change the period of the chart (e.g. from M15 to M5, or to M30) if you have an active order that resulted from a range breakout.  The change in the candle size is seen by the program as the start of a new candle, and triggers the logic to check for "close back inside range" conditions, and may result in the order being erroneously closed.
+
 # RELEASE NOTES for v 0.41.1 8/28/2018
 
 This release adds some new features and makes some very significant improvements to existing features.
